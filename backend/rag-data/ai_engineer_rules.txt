@@ -1,0 +1,5 @@
+AI Engineer resumes should show model development, evaluation, prompt engineering, RAG, vector search, embeddings, deployment, and monitoring.
+Mention local or open-source model work when relevant, including Hugging Face, transformers, sentence-transformers, and vector databases.
+Projects should include the problem, data or documents used, retrieval strategy, model choice, evaluation metric, and production interface.
+Avoid claiming proprietary model expertise unless the candidate has actually used those systems.
+For RAG roles, highlight chunking, embedding model, vector database, retrieval quality, latency, and answer grounding.

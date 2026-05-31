@@ -1,0 +1,5 @@
+Software Engineer resumes should demonstrate problem solving, data structures, algorithms, clean code, testing, debugging, and collaboration.
+A project entry should identify the user problem, implementation approach, technologies, and result.
+Use standard headings: Summary, Skills, Experience, Projects, Education, Certifications.
+ATS-friendly documents should avoid tables, images, icons, headers with important text, and unusual section names.
+Prefer concise bullets over paragraphs and keep each bullet focused on one accomplishment.

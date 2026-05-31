@@ -1,0 +1,6 @@
+Python Developer resumes should show Python, APIs, automation, scripting, backend frameworks, testing, data handling, package management, and deployment.
+Common ATS terms include FastAPI, Flask, Django, pandas, NumPy, pytest, REST API, Celery, Airflow, Docker, PostgreSQL, Redis, Git, and CI/CD.
+Strong bullets explain what was automated or built, the Python libraries used, and the result such as fewer manual hours, faster processing, or fewer defects.
+Projects should include API endpoints, authentication, database models, test coverage, error handling, logging, and deployment details.
+For data-heavy Python roles, mention ETL, web scraping, data validation, pandas transformations, and scheduled pipelines.
+Avoid claiming advanced frameworks without examples; tie every tool to a project, service, script, or measurable workflow.

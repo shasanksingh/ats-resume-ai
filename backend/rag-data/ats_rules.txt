@@ -1,0 +1,19 @@
+AI Engineer resumes should highlight RAG pipelines, LLM integrations, embeddings, and vector databases.
+
+Backend engineer resumes should include scalable systems and REST API development.
+
+Strong resumes use measurable impact like percentages, latency reduction, or user scale.
+
+ATS-friendly resumes should avoid tables, graphics, icons, and complex layouts.
+
+Projects should explain business impact and technical implementation clearly.
+
+Recruiters prefer resumes with role-specific keywords matching the job description.
+
+Resume bullet points should begin with strong action verbs.
+
+AI resumes should mention frameworks like LangChain, Hugging Face, FastAPI, and FAISS.
+
+Cloud-related roles should mention AWS, Docker, Kubernetes, and CI/CD.
+
+Resume summaries should be concise and role-targeted.

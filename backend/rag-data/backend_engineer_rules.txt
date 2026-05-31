@@ -1,0 +1,4 @@
+Backend Engineer resumes should emphasize APIs, database design, reliability, authentication, testing, deployment, observability, and performance.
+ATS systems often match terms such as FastAPI, REST API, PostgreSQL, Docker, Kubernetes, CI/CD, caching, queues, and microservices.
+Strong backend bullets include throughput, latency, uptime, cost, scale, migration size, or developer productivity impact.
+Describe architecture decisions plainly and avoid overloading bullets with tool names that were not used.

@@ -1,0 +1,6 @@
+SQL Developer resumes should emphasize schema design, stored procedures, views, triggers, indexes, query optimization, ETL, data quality, and database performance.
+ATS systems often match SQL Server, MySQL, PostgreSQL, Oracle, SSIS, SSRS, normalization, CTEs, joins, window functions, execution plans, and performance tuning.
+Strong SQL bullets include query runtime reduction, report refresh improvement, migration volume, data accuracy improvement, or database uptime.
+Describe database objects and business use cases plainly, such as optimized stored procedures for monthly finance reporting or built indexed views for inventory analytics.
+Mention data governance, backup and restore, access control, and production support only when the candidate has direct experience.
+For junior profiles, include academic database projects, normalized schemas, complex joins, constraints, and sample reporting queries.

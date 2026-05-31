@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 24% 97%;
+  --foreground: 240 10% 4%;
+  --border: 240 6% 90%;
+  --muted: 240 5% 96%;
+  --accent: 36 92% 56%;
+  --primary: 188 86% 33%;
+}
+
+body {
+  min-height: 100vh;
+  background:
+    linear-gradient(135deg, rgba(14, 116, 144, 0.08), transparent 32%),
+    linear-gradient(315deg, rgba(245, 158, 11, 0.12), transparent 28%),
+    hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+::selection {
+  background: rgba(14, 116, 144, 0.18);
+}

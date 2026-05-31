@@ -1,0 +1,36 @@
+# Node
+
+node_modules/
+**/node_modules/
+
+# Next.js
+
+.next/
+**/.next/
+
+# Python
+
+venv/
+**/venv/
+**pycache**/
+*.pyc
+
+# Environment
+
+.env
+.env.local
+
+# ATS files
+
+uploads/
+chroma_db/
+vector_store/
+
+# VS Code
+
+.vscode/
+
+# OS
+
+.DS_Store
+Thumbs.db

@@ -1,0 +1,6 @@
+Data Analyst resumes should show SQL, Excel, Power BI, Tableau, dashboarding, data cleaning, KPI tracking, stakeholder reporting, and statistical analysis.
+Strong analyst bullets explain the business question, dataset size or source, method used, and decision impact.
+Use terms such as exploratory data analysis, cohort analysis, funnel analysis, segmentation, forecasting, A/B testing, variance analysis, and data visualization when truthful.
+Projects should describe data sources, transformation steps, visual outputs, and measurable outcomes such as reduced reporting time or improved conversion insight.
+Entry-level analyst profiles should include portfolio dashboards, cleaned datasets, SQL queries, Excel models, and clear business recommendations.
+Avoid vague phrases like worked on reports; prefer created a Power BI dashboard tracking revenue, retention, churn, or operational KPIs.

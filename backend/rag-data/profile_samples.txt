@@ -1,0 +1,19 @@
+Profile: Data Analyst
+Summary pattern: Data analyst skilled in SQL, Excel, Power BI, Tableau, and KPI reporting with experience turning messy operational data into decision-ready dashboards.
+Sample bullet: Built a Power BI revenue dashboard from SQL extracts and Excel inputs, reducing weekly reporting time by 40%.
+Sample bullet: Analyzed customer cohorts and funnel drop-off to identify retention opportunities for product and marketing teams.
+
+Profile: SQL Developer
+Summary pattern: SQL developer focused on database design, stored procedures, query optimization, ETL workflows, and reliable reporting systems.
+Sample bullet: Optimized stored procedures and indexes for finance reports, reducing average query runtime from 90 seconds to 18 seconds.
+Sample bullet: Designed normalized tables, views, and validation checks to improve reporting accuracy across sales and inventory datasets.
+
+Profile: Python Developer
+Summary pattern: Python developer with hands-on experience building APIs, automation scripts, ETL jobs, and tested backend services.
+Sample bullet: Developed FastAPI endpoints with PostgreSQL models, request validation, logging, and pytest coverage for internal workflow automation.
+Sample bullet: Automated CSV ingestion and data cleaning with pandas, saving 10 hours of manual operations work each month.
+
+Profile: Digital Marketing Specialist
+Summary pattern: Digital marketing specialist experienced in SEO, paid campaigns, GA4 reporting, email marketing, landing page optimization, and lead generation.
+Sample bullet: Improved organic traffic through keyword research, technical SEO fixes, and content refreshes measured in GA4.
+Sample bullet: Managed Google Ads and Meta Ads tests across landing pages, improving CTR and reducing cost per qualified lead.
