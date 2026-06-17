@@ -1,0 +1,6 @@
+Profile: Frontend / Full-Stack Engineer
+Highlight JavaScript or TypeScript, React, Next.js, Angular, Vue, HTML, CSS, accessibility, responsive design, and state management as applicable.
+Strong frontend bullets connect implementation to page speed, conversion, usability, accessibility, bundle size, or defect reduction.
+Full-stack resumes should show clear ownership across UI, APIs, authentication, databases, testing, deployment, and observability.
+Name testing tools, browser support, design-system work, API integration, and performance techniques when they are part of real experience.
+Projects should explain users, business workflow, architecture, deployment, and the candidate's direct contribution.

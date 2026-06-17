@@ -1,14 +1,22 @@
-import math
 import re
 from collections import Counter
 from typing import Dict, List
 
 from app.data.skills import SKILL_ALIASES, TECH_SKILLS
 from app.services.parser.resume_parser import (
-    count_action_verbs,
+    ACTION_VERBS,
     extract_resume_data,
     quantified_bullets,
 )
+
+SCORE_WEIGHTS = {
+    "skills_match": 30,
+    "keyword_density": 20,
+    "section_completeness": 15,
+    "resume_length": 5,
+    "action_verbs": 15,
+    "quantified_impact": 15,
+}
 
 
 def extract_keywords(text: str) -> List[str]:
@@ -51,16 +59,16 @@ def calculate_ats_score(resume_text: str, jd_text: str) -> Dict:
     keyword_score = ratio_score(len(matched_terms), len(jd_terms), empty_score=50)
     section_score, section_weaknesses = score_sections(structured)
     length_score = score_length(resume_text)
-    action_score = score_action_verbs(resume_text)
-    impact_score = score_quantified_impact(structured)
+    action_score, action_count, bullet_count = score_action_verbs(structured)
+    impact_score, quantified_count, impact_bullet_count = score_quantified_impact(structured)
 
     weighted = (
-        skill_score * 0.32
-        + keyword_score * 0.20
-        + section_score * 0.18
-        + length_score * 0.10
-        + action_score * 0.10
-        + impact_score * 0.10
+        skill_score * SCORE_WEIGHTS["skills_match"] / 100
+        + keyword_score * SCORE_WEIGHTS["keyword_density"] / 100
+        + section_score * SCORE_WEIGHTS["section_completeness"] / 100
+        + length_score * SCORE_WEIGHTS["resume_length"] / 100
+        + action_score * SCORE_WEIGHTS["action_verbs"] / 100
+        + impact_score * SCORE_WEIGHTS["quantified_impact"] / 100
     )
     score = int(max(0, min(100, round(weighted))))
 
@@ -89,6 +97,26 @@ def calculate_ats_score(resume_text: str, jd_text: str) -> Dict:
             "action_verbs": action_score,
             "quantified_impact": impact_score,
         },
+        "score_explanations": build_score_explanations(
+            scores={
+                "skills_match": skill_score,
+                "keyword_density": keyword_score,
+                "section_completeness": section_score,
+                "resume_length": length_score,
+                "action_verbs": action_score,
+                "quantified_impact": impact_score,
+            },
+            matched_skills=len(matched_keywords),
+            jd_skills=len(jd_keywords),
+            matched_terms=len(matched_terms),
+            jd_terms=len(jd_terms),
+            section_weaknesses=section_weaknesses,
+            word_count=len(resume_text.split()),
+            action_count=action_count,
+            action_bullets=bullet_count,
+            quantified_count=quantified_count,
+            impact_bullets=impact_bullet_count,
+        ),
         "recommendations": build_recommendations(missing_keywords, section_weaknesses, action_score, impact_score),
     }
 
@@ -123,20 +151,75 @@ def score_length(text: str) -> int:
     return 25
 
 
-def score_action_verbs(text: str) -> int:
-    words = max(len(text.split()), 1)
-    density = count_action_verbs(text) / words
-    return int(min(100, round(density * 1500)))
-
-
-def score_quantified_impact(structured: Dict) -> int:
+def resume_bullets(structured: Dict) -> List[str]:
     bullets = []
     for item in structured.get("experience", []):
         bullets.extend(item.get("bullets", []))
     for item in structured.get("projects", []):
         bullets.extend(item.get("bullets", []))
+    return bullets
+
+
+def score_action_verbs(structured: Dict) -> tuple[int, int, int]:
+    bullets = resume_bullets(structured)
+    action_count = 0
+    for bullet in bullets:
+        first_word = re.search(r"[A-Za-z]+", bullet)
+        if first_word and first_word.group(0).lower() in ACTION_VERBS:
+            action_count += 1
+    return ratio_score(action_count, len(bullets), empty_score=35), action_count, len(bullets)
+
+
+def score_quantified_impact(structured: Dict) -> tuple[int, int, int]:
+    bullets = resume_bullets(structured)
     quantified, total = quantified_bullets(bullets)
-    return ratio_score(quantified, total, empty_score=35)
+    return ratio_score(quantified, total, empty_score=35), quantified, total
+
+
+def build_score_explanations(
+    scores: Dict[str, int],
+    matched_skills: int,
+    jd_skills: int,
+    matched_terms: int,
+    jd_terms: int,
+    section_weaknesses: List[str],
+    word_count: int,
+    action_count: int,
+    action_bullets: int,
+    quantified_count: int,
+    impact_bullets: int,
+) -> List[Dict]:
+    evidence = {
+        "skills_match": f"{matched_skills} of {jd_skills} detected role skills are supported.",
+        "keyword_density": f"{matched_terms} of {jd_terms} important role terms appear naturally.",
+        "section_completeness": (
+            "All core sections were detected."
+            if not section_weaknesses
+            else f"{len(section_weaknesses)} core section issue(s) were detected."
+        ),
+        "resume_length": f"{word_count} words were available for recruiter and ATS scanning.",
+        "action_verbs": f"{action_count} of {action_bullets} experience or project bullets start with an action verb.",
+        "quantified_impact": f"{quantified_count} of {impact_bullets} bullets include measurable evidence.",
+    }
+    labels = {
+        "skills_match": "Skills match",
+        "keyword_density": "Keyword coverage",
+        "section_completeness": "Section completeness",
+        "resume_length": "Resume length",
+        "action_verbs": "Action language",
+        "quantified_impact": "Measured impact",
+    }
+    return [
+        {
+            "category": key,
+            "label": labels[key],
+            "score": scores[key],
+            "weight": SCORE_WEIGHTS[key],
+            "contribution": round(scores[key] * SCORE_WEIGHTS[key] / 100, 1),
+            "evidence": evidence[key],
+        }
+        for key in SCORE_WEIGHTS
+    ]
 
 
 def build_strengths(matched: List[str], section_score: int, length_score: int, action_score: int, impact_score: int) -> List[str]:

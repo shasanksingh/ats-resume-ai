@@ -1,0 +1,6 @@
+Profile: Healthcare / Clinical Research / Life Sciences
+Healthcare resumes should prioritize patient safety, clinical documentation, medical terminology, care coordination, and regulatory compliance.
+Clinical research roles should show protocol support, data collection, site coordination, adverse-event documentation, GCP, and audit readiness.
+Pharmacovigilance resumes should highlight case processing, safety databases, MedDRA coding, narratives, timelines, and quality review.
+Laboratory and quality roles should show testing methods, SOPs, equipment, QMS, CAPA, validation, and accuracy.
+Strong bullets quantify patient or case volume, turnaround time, quality, compliance, or process improvements without exposing protected data.

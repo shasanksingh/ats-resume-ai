@@ -1,0 +1,6 @@
+Profile: IT Support / Help Desk / Desktop Support Engineer
+Highlight troubleshooting across Windows, Linux, Microsoft 365, Active Directory, hardware, software, printers, VPNs, and networks.
+Strong support bullets quantify ticket volume, first-contact resolution, SLA achievement, user satisfaction, device count, or resolution time.
+Include ticketing tools, remote support, user onboarding, account provisioning, asset management, documentation, and escalation handling.
+Show clear communication with non-technical users and the ability to diagnose issues systematically.
+Avoid duty-only statements such as "resolved tickets"; explain issue categories, service levels, and outcomes.

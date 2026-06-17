@@ -1,0 +1,8 @@
+Profile: Quality Assurance Engineer / Test Engineer
+Lead with testing scope: UI, API, functional, regression, integration, smoke, UAT, performance, or mobile testing.
+Name the automation stack truthfully, such as Selenium, Cypress, Playwright, Postman, JMeter, pytest, JUnit, or TestNG.
+Strong QA bullets show coverage increased, defects prevented, regression time reduced, release confidence improved, or manual effort saved.
+Include test planning, test-case design, defect lifecycle, root-cause collaboration, Agile ceremonies, and release validation where relevant.
+For API testing, mention request validation, authentication, status codes, schemas, negative cases, collections, and automated assertions.
+For automation roles, show framework design, reusable fixtures, CI/CD execution, reporting, and cross-browser or environment coverage.
+Avoid listing every testing type without explaining the product, workflow, risk, or measurable outcome.

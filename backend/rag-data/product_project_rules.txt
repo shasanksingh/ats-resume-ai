@@ -1,0 +1,6 @@
+Profile: Product Manager / Project Manager / Business Analyst
+Product resumes should show customer discovery, requirements, roadmap prioritization, experimentation, adoption, retention, and business outcomes.
+Project resumes should show scope, schedule, budget, risks, dependencies, stakeholders, vendors, governance, and delivery status.
+Business analyst resumes should highlight requirements gathering, process mapping, user stories, acceptance criteria, UAT, and data-backed decisions.
+Strong bullets quantify users, revenue, adoption, cycle time, cost, delivery speed, backlog size, or stakeholder impact.
+Avoid vague coordination claims; clarify the decision made, artifact produced, team influenced, and result achieved.

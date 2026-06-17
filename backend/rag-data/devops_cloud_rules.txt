@@ -1,0 +1,6 @@
+Profile: DevOps / Cloud / Site Reliability Engineer
+Prioritize AWS, Azure, or GCP services; Docker; Kubernetes; Terraform; CI/CD; Linux; monitoring; and incident response.
+Strong bullets quantify deployment frequency, recovery time, availability, infrastructure cost, provisioning time, or alert reduction.
+Describe infrastructure as code, release pipelines, container orchestration, secrets, networking, logging, and environment standardization.
+SRE resumes should include SLI/SLO ownership, observability, capacity planning, postmortems, on-call response, and reliability improvements.
+Avoid generic tool inventories without showing production scale, operational responsibility, or outcomes.

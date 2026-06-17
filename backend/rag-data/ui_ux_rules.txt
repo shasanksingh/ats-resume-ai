@@ -1,0 +1,6 @@
+Profile: UI / UX / Product Designer
+Highlight user research, information architecture, wireframing, prototyping, usability testing, interaction design, and design systems.
+Name Figma, Adobe XD, Sketch, Photoshop, Illustrator, or analytics tools only where used.
+Strong bullets connect design work to task completion, conversion, adoption, accessibility, consistency, or reduced support friction.
+Explain collaboration with product managers and engineers, handoff quality, responsive behavior, and component documentation.
+Portfolio links should be visible and each case study should explain the problem, process, decisions, and measurable outcome.

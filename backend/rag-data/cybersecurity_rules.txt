@@ -1,0 +1,6 @@
+Profile: Cybersecurity / SOC / Information Security Analyst
+Highlight SIEM monitoring, vulnerability assessment, incident response, IAM, network security, risk assessment, and compliance.
+Name relevant tools truthfully, such as Splunk, Wireshark, Nmap, firewalls, IDS/IPS, endpoint protection, or ticketing systems.
+Strong bullets show threats investigated, vulnerabilities remediated, response time improved, false positives reduced, or controls implemented.
+Compliance-focused resumes should reference applicable frameworks such as ISO 27001, NIST, SOC 2, PCI DSS, or HIPAA only when supported.
+Penetration-testing bullets should state scope, methodology, findings, remediation collaboration, and reporting without exposing sensitive data.

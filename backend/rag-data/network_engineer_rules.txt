@@ -1,0 +1,6 @@
+Profile: Network Engineer / Network Administrator
+Prioritize TCP/IP, DNS, DHCP, routing, switching, VLANs, VPNs, firewalls, LAN/WAN, wireless, and network monitoring.
+Include Cisco or other vendor platforms, configuration, troubleshooting, change management, documentation, and uptime responsibilities.
+Strong bullets quantify sites, devices, users, incidents, latency, availability, migration scope, or troubleshooting time.
+Show experience with packet analysis, access control, redundancy, backup configuration, and escalation procedures when relevant.
+Certifications such as CCNA or CCNP should be listed only when actually earned.

@@ -1,0 +1,7 @@
+Profile: Electrical / Electronics Engineer
+Highlight power systems, circuit design, control systems, PLC, SCADA, electrical maintenance, testing, safety, and relevant standards.
+Power roles should show distribution, transformers, switchgear, relay protection, load studies, commissioning, and preventive maintenance.
+Electronics roles may emphasize embedded systems, microcontrollers, PCB design, signal processing, VLSI, MATLAB, or Simulink.
+Strong bullets quantify capacity, voltage level, downtime, energy savings, fault reduction, maintenance turnaround, or project value.
+Include drawings, calculations, inspections, root-cause analysis, vendor coordination, and safety compliance where supported.
+Software and tools such as AutoCAD Electrical, ETAP, MATLAB, PLC platforms, or SCADA should be tied to real deliverables.

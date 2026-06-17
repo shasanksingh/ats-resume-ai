@@ -7,6 +7,9 @@ node_modules/
 
 .next/
 **/.next/
+.next-build-check/
+**/.next-build-check/
+out/
 
 # Python
 
@@ -14,6 +17,8 @@ venv/
 **/venv/
 **pycache**/
 *.pyc
+.pytest_cache/
+**/.pytest_cache/
 
 # Environment
 
@@ -23,8 +28,18 @@ venv/
 # ATS files
 
 uploads/
+backend/uploads/
+backend/data/
+*.sqlite
+*.sqlite3
+*.db
 chroma_db/
+vector_db/
+backend/vector_db/
 vector_store/
+*.log
+frontend/next-dev.log
+frontend/next-dev.err.log
 
 # VS Code
 
