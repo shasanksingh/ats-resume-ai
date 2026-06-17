@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
 
+const productionBackendUrl = "https://ats-resume-ai-production.up.railway.app";
+const publicApiBase = process.env.NEXT_PUBLIC_API_BASE_URL;
 const backendUrl =
   process.env.BACKEND_URL ||
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "http://127.0.0.1:8000";
+  (publicApiBase?.startsWith("http") ? publicApiBase : undefined) ||
+  (process.env.NODE_ENV === "production" ? productionBackendUrl : "http://127.0.0.1:8000");
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,

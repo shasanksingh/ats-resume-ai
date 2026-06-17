@@ -51,6 +51,10 @@ def create_vector_db():
     )
 
 
+def guidance_corpus_available() -> bool:
+    return any(Path(RAG_DATA_DIR).glob("*.txt"))
+
+
 def load_documents():
     documents = []
     for path in sorted(Path(RAG_DATA_DIR).glob("*.txt")):

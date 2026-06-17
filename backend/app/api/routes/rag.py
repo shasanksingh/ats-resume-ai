@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.resume import RagSearchRequest
-from app.services.rag.rag_engine import create_vector_db, search_rag_detailed
+from app.services.rag.rag_engine import create_vector_db, guidance_corpus_available, search_rag_detailed
 
 router = APIRouter(prefix="/rag", tags=["Role Guidance"])
 
@@ -13,8 +13,14 @@ def build_rag():
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
+        if guidance_corpus_available():
+            return {
+                "message": "Local role guidance is ready in keyword mode; semantic embeddings are unavailable in this deployment.",
+                "mode": "keyword",
+                "warning": "Search still works through the bundled local career guidance files.",
+            }
         raise HTTPException(status_code=503, detail="Local role guidance index could not be built") from exc
-    return {"message": "Local role guidance index created successfully"}
+    return {"message": "Local role guidance index created successfully", "mode": "semantic"}
 
 
 @router.post("/search")

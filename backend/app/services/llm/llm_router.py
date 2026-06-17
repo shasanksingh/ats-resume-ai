@@ -33,5 +33,14 @@ def generate_resume_optimization(prompt: str, max_new_tokens: int = 220) -> Dict
         return {
             "success": False,
             "provider": "local-model",
-            "text": str(exc),
+            "text": local_model_error_message(exc),
         }
+
+
+def local_model_error_message(exc: Exception) -> str:
+    if MODEL_LOCAL_FILES_ONLY:
+        return (
+            f"Local model '{LOCAL_LLM_MODEL}' is not available in this deployment cache. "
+            "Deterministic resume optimization was used instead."
+        )
+    return str(exc)

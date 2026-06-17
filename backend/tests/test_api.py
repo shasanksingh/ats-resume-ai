@@ -79,6 +79,19 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("/auth/signup", response.json()["paths"])
         self.assertIn("/feedback", response.json()["paths"])
 
+    def test_cors_allows_localhost_and_vercel_frontend(self):
+        for origin in ("http://localhost:3000", "http://127.0.0.1:3000", "https://ats-resume-ai-alpha.vercel.app"):
+            response = self.client.options(
+                "/upload/resume",
+                headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": "POST",
+                    "Access-Control-Request-Headers": "content-type",
+                },
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers["access-control-allow-origin"], origin)
+
     def test_upload_saves_valid_pdf_with_collision_safe_name(self):
         first = self.upload()
         second = self.upload()
@@ -291,6 +304,17 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(searched.json()["sources"][0]["source"], "test_rules.txt")
         build.assert_called_once()
         search.assert_called_once_with("backend engineer", 2)
+
+    def test_rag_build_falls_back_to_keyword_mode_when_embeddings_are_unavailable(self):
+        with (
+            patch("app.api.routes.rag.create_vector_db", side_effect=RuntimeError("model unavailable")),
+            patch("app.api.routes.rag.guidance_corpus_available", return_value=True),
+        ):
+            response = self.client.post("/rag/build")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["mode"], "keyword")
+        self.assertIn("keyword", response.json()["message"].lower())
 
     def test_schema_validation_rejects_bad_requests(self):
         invalid_optimize = self.client.post(
