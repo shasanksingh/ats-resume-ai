@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
 from app.core.files import resolve_uploaded_pdf
-from app.schemas.resume import LatexRequest, OptimizeRequest, RebuildRequest
-from app.services.llm.resume_optimizer import optimize_resume
+from app.schemas.resume import LatexRequest, OptimizeRequest, RebuildRequest, RefinementRequest
+from app.services.ats.ats_score import calculate_ats_score
+from app.services.llm.nvidia_mistral_service import NvidiaServiceError, refine_selected_changes
+from app.services.llm.resume_optimizer import enrich_supported_keywords, optimize_resume
 from app.services.parser.resume_parser import (
     extract_links_from_pdf,
     extract_resume_data,
@@ -44,6 +46,21 @@ def optimize_resume_route(payload: OptimizeRequest):
     return result
 
 
+@router.post("/refine")
+def refine_selected_changes_route(payload: RefinementRequest):
+    try:
+        return refine_selected_changes(
+            payload.instruction,
+            payload.job_description,
+            payload.summary,
+            [item.model_dump() for item in payload.bullets],
+        )
+    except NvidiaServiceError as exc:
+        message = str(exc)
+        status_code = 504 if "timed out" in message.lower() else 503 if "not configured" in message.lower() else 502
+        raise HTTPException(status_code=status_code, detail=message) from exc
+
+
 @router.post("/rebuild")
 def rebuild_resume_route(payload: RebuildRequest):
     try:
@@ -74,21 +91,22 @@ def generate_latex_route(payload: LatexRequest):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    rag_context, _ = get_rag_context(payload.job_description)
-    result = optimize_resume(
+    export_structured, export_optimization = prepare_selected_export(
         resume_text,
+        structured,
         payload.job_description,
-        rag_context,
-        include_local_model=False,
-        structured_resume=structured,
-        confirmed_keywords=payload.confirmed_keywords,
+        payload.confirmed_keywords,
+        payload.selected_summary,
+        [item.model_dump() for item in payload.selected_bullets],
     )
-    return generate_latex_resume(
-        result["structured_resume"],
-        result["optimization"],
+    latex = generate_latex_resume(
+        export_structured,
+        export_optimization,
         payload.filename,
         payload.template,
     )
+    latex["applied_changes"] = len(payload.selected_bullets) + (1 if payload.selected_summary else 0)
+    return latex
 
 
 @router.get("/latex/status")
@@ -105,18 +123,17 @@ def compile_latex_route(payload: LatexRequest):
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    rag_context, _ = get_rag_context(payload.job_description)
-    result = optimize_resume(
+    export_structured, export_optimization = prepare_selected_export(
         resume_text,
+        structured,
         payload.job_description,
-        rag_context,
-        include_local_model=False,
-        structured_resume=structured,
-        confirmed_keywords=payload.confirmed_keywords,
+        payload.confirmed_keywords,
+        payload.selected_summary,
+        [item.model_dump() for item in payload.selected_bullets],
     )
     latex = generate_latex_resume(
-        result["structured_resume"],
-        result["optimization"],
+        export_structured,
+        export_optimization,
         payload.filename,
         payload.template,
     )
@@ -124,25 +141,49 @@ def compile_latex_route(payload: LatexRequest):
         return compile_latex_source(latex["latex_source"], payload.filename)
     except LatexCompilerUnavailable as exc:
         return render_latex_preview_pdf(
-            result["structured_resume"],
-            result["optimization"],
+            export_structured,
+            export_optimization,
             payload.filename,
             str(exc),
         )
     except LatexCompilationError as exc:
         return render_latex_preview_pdf(
-            result["structured_resume"],
-            result["optimization"],
+            export_structured,
+            export_optimization,
             payload.filename,
             str(exc),
         )
+
+
+def prepare_selected_export(
+    resume_text: str,
+    structured: dict,
+    job_description: str,
+    confirmed_keywords: list[str],
+    selected_summary: str | None,
+    selected_bullets: list[dict],
+) -> tuple[dict, dict]:
+    baseline_ats = calculate_ats_score(resume_text, job_description)
+    export_structured, _ = enrich_supported_keywords(
+        structured,
+        resume_text,
+        baseline_ats,
+        confirmed_keywords,
+    )
+    return export_structured, {
+        "improved_summary": selected_summary or "",
+        "improved_bullets": selected_bullets,
+    }
 
 
 def load_resume(filename: str) -> tuple[str, dict]:
     path = resolve_uploaded_pdf(filename)
     resume_text = extract_text_from_pdf(str(path))
     structured = extract_resume_data(resume_text)
-    structured["links"] = extract_links_from_pdf(str(path))
+    structured["links"] = {
+        **structured.get("links", {}),
+        **extract_links_from_pdf(str(path)),
+    }
     return resume_text, structured
 
 

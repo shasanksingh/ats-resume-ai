@@ -24,7 +24,7 @@ import { InsightStackIcon, ResumePrismIcon } from "@/components/visuals/product-
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const profiles = ["Data Analyst", "SQL Developer", "Python Developer", "Digital Marketing", "Technical Support", "Mechanical Engineer"];
 const pipeline = [
-  { label: "Private local workflow", icon: ShieldCheck },
+  { label: "Private 24-hour storage", icon: ShieldCheck },
   { label: "Multi-factor ATS scoring", icon: Layers3 },
   { label: "Role-specific career guidance", icon: InsightStackIcon }
 ];
@@ -94,7 +94,11 @@ export default function UploadPage() {
     setNotice(null);
     try {
       const uploaded = await uploadResume(file, setProgress);
-      localStorage.setItem("ats-workflow", JSON.stringify({ filename: uploaded.filename, jobDescription: jd.trim() }));
+      localStorage.setItem("ats-workflow", JSON.stringify({
+        filename: uploaded.filename,
+        jobDescription: jd.trim(),
+        expiresAt: uploaded.expires_at
+      }));
       localStorage.removeItem("ats-analysis");
       localStorage.removeItem("ats-optimized");
       setNotice({ message: "Resume uploaded successfully. Opening your analysis workspace.", tone: "success" });
@@ -244,7 +248,7 @@ export default function UploadPage() {
             </Button>
 
             <div className="flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs text-zinc-500">
-              {["PDF validation", "Secure filename", "No paid service"].map((item) => (
+              {["PDF validation", "24-hour automatic deletion", "Secure API key"].map((item) => (
                 <span className="flex items-center gap-1.5" key={item}><Check className="h-3.5 w-3.5 text-emerald-600" />{item}</span>
               ))}
             </div>

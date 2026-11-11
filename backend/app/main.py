@@ -1,12 +1,36 @@
+import asyncio
+from contextlib import asynccontextmanager, suppress
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes import analyze, auth, feedback, jd, optimize, rag, recommend, upload
-from app.core.config import CORS_ORIGINS, UPLOAD_DIR
+from app.core.config import CLEANUP_INTERVAL_SECONDS, CORS_ORIGINS, UPLOAD_DIR
+from app.core.retention import cleanup_expired_files
 from app.services.auth import initialize_auth_db
 
-app = FastAPI(title="ATS Resume Studio", version="0.3.0")
+
+async def periodic_file_cleanup():
+    while True:
+        await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
+        await asyncio.to_thread(cleanup_expired_files)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    initialize_auth_db()
+    await asyncio.to_thread(cleanup_expired_files)
+    cleanup_task = asyncio.create_task(periodic_file_cleanup())
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await cleanup_task
+
+
+app = FastAPI(title="ATS Resume Studio", version="0.4.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,11 +54,6 @@ app.mount("/files/optimized", StaticFiles(directory=UPLOAD_DIR / "optimized"), n
 @app.get("/")
 def home():
     return {"message": "ATS Resume Studio Backend Running"}
-
-
-@app.on_event("startup")
-def startup():
-    initialize_auth_db()
 
 
 @app.get("/health")

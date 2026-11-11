@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Dict
 
 from app.core.config import LOCAL_LLM_MODEL, MODEL_LOCAL_FILES_ONLY
@@ -6,6 +7,11 @@ from app.core.config import LOCAL_LLM_MODEL, MODEL_LOCAL_FILES_ONLY
 
 @lru_cache(maxsize=1)
 def get_local_generator():
+    if MODEL_LOCAL_FILES_ONLY and not Path(LOCAL_LLM_MODEL).is_dir():
+        from huggingface_hub import try_to_load_from_cache
+
+        if not isinstance(try_to_load_from_cache(LOCAL_LLM_MODEL, "config.json"), str):
+            raise RuntimeError("The optional local generation model is not cached.")
     from transformers import pipeline
 
     return pipeline(

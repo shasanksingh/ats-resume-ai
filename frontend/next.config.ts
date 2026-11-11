@@ -10,6 +10,20 @@ const backendUrl =
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   distDir: process.env.NEXT_DIST_DIR || ".next",
+  experimental: {
+    cpus: 1,
+    // Allow the backend's NVIDIA timeout to return a useful error to the UI.
+    proxyTimeout: 150_000
+  },
+  webpack(config, { dev }) {
+    // Some Windows Node installations fail while webpack creates its large
+    // development cache buffer. Dev recompilation is small for this app, so
+    // avoiding that cache is more reliable and does not affect production.
+    if (dev) {
+      config.cache = false;
+    }
+    return config;
+  },
   async rewrites() {
     return [
       {

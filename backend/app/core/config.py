@@ -1,8 +1,12 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 
 BASE_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(BASE_DIR / ".env")
+
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -17,6 +21,16 @@ DATABASE_PATH = Path(os.getenv("DATABASE_PATH", BASE_DIR / "data" / "ats_resume.
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "google/flan-t5-base")
 MODEL_LOCAL_FILES_ONLY = os.getenv("MODEL_LOCAL_FILES_ONLY", "1") == "1"
 MAX_UPLOAD_SIZE_BYTES = int(os.getenv("MAX_UPLOAD_SIZE_BYTES", str(10 * 1024 * 1024)))
+UPLOAD_RETENTION_HOURS = max(1, int(os.getenv("UPLOAD_RETENTION_HOURS", "24")))
+CLEANUP_INTERVAL_SECONDS = max(300, int(os.getenv("CLEANUP_INTERVAL_SECONDS", "3600")))
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "").strip()
+NVIDIA_API_URL = os.getenv(
+    "NVIDIA_API_URL",
+    "https://integrate.api.nvidia.com/v1/chat/completions",
+).strip()
+NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "mistralai/mistral-large-4-1t-a52b").strip()
+NVIDIA_TIMEOUT_SECONDS = max(5, min(120, int(os.getenv("NVIDIA_TIMEOUT_SECONDS", "120"))))
+NVIDIA_MAX_TOKENS = max(256, min(2048, int(os.getenv("NVIDIA_MAX_TOKENS", "1200"))))
 
 
 def parse_cors_origins() -> list[str]:

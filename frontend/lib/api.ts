@@ -7,6 +7,13 @@ export const FEEDBACK_SUBMITTED_STORAGE_KEY = "ats-feedback-submitted";
 export type WorkflowState = {
   filename: string;
   jobDescription: string;
+  expiresAt?: string;
+};
+
+export type BulletRewrite = {
+  original: string;
+  improved: string;
+  reason: string;
 };
 
 export type AtsResult = {
@@ -57,6 +64,7 @@ export type ResumeData = {
   name?: string;
   email?: string;
   phone?: string;
+  location?: string;
   summary?: string;
   skills?: string[];
   skill_groups?: Record<string, string[]>;
@@ -67,6 +75,24 @@ export type ResumeData = {
   certifications?: string[];
   links?: Record<string, string>;
   sections?: Record<string, string>;
+  document_stats?: {
+    characters: number;
+    words: number;
+    lines: number;
+  };
+  extraction_quality?: {
+    score: number;
+    label: "High confidence" | "Review suggested" | "Low confidence";
+    warnings: string[];
+    detected_sections: string[];
+    counts: {
+      experience: number;
+      projects: number;
+      education: number;
+      skills: number;
+      bullets: number;
+    };
+  };
   [key: string]: unknown;
 };
 
@@ -83,7 +109,7 @@ export type OptimizationResponse = {
   ats: AtsResult;
   optimization: {
     improved_summary: string;
-    improved_bullets: { original: string; improved: string; reason: string }[];
+    improved_bullets: BulletRewrite[];
     keyword_suggestions: string[];
     keyword_decisions: {
       keyword: string;
@@ -102,6 +128,7 @@ export type UploadResponse = {
   original_filename: string;
   status: string;
   size_bytes: number;
+  expires_at: string;
 };
 
 export type LatexResponse = {
@@ -111,6 +138,15 @@ export type LatexResponse = {
   format: "tex";
   template: "jakes";
   latex_source: string;
+  applied_changes: number;
+};
+
+export type RefinementResponse = {
+  summary: string | null;
+  bullets: BulletRewrite[];
+  provider: string;
+  cached: boolean;
+  latency_ms: number;
 };
 
 export type LatexCompilerStatus = {
@@ -265,10 +301,23 @@ export function rebuildResume(filename: string, jobDescription: string, outputFo
   });
 }
 
-export function generateLatex(filename: string, jobDescription: string, confirmedKeywords: string[] = []) {
+export function generateLatex(
+  filename: string,
+  jobDescription: string,
+  confirmedKeywords: string[] = [],
+  selectedSummary: string | null = null,
+  selectedBullets: BulletRewrite[] = []
+) {
   return request<LatexResponse>("/optimize/latex", {
     method: "POST",
-    body: JSON.stringify({ filename, job_description: jobDescription, template: "jakes", confirmed_keywords: confirmedKeywords })
+    body: JSON.stringify({
+      filename,
+      job_description: jobDescription,
+      template: "jakes",
+      confirmed_keywords: confirmedKeywords,
+      selected_summary: selectedSummary,
+      selected_bullets: selectedBullets
+    })
   });
 }
 
@@ -276,10 +325,40 @@ export function getLatexCompilerStatus() {
   return request<LatexCompilerStatus>("/optimize/latex/status");
 }
 
-export function compileLatex(filename: string, jobDescription: string, confirmedKeywords: string[] = []) {
+export function compileLatex(
+  filename: string,
+  jobDescription: string,
+  confirmedKeywords: string[] = [],
+  selectedSummary: string | null = null,
+  selectedBullets: BulletRewrite[] = []
+) {
   return request<LatexCompileResponse>("/optimize/latex/compile", {
     method: "POST",
-    body: JSON.stringify({ filename, job_description: jobDescription, template: "jakes", confirmed_keywords: confirmedKeywords })
+    body: JSON.stringify({
+      filename,
+      job_description: jobDescription,
+      template: "jakes",
+      confirmed_keywords: confirmedKeywords,
+      selected_summary: selectedSummary,
+      selected_bullets: selectedBullets
+    })
+  });
+}
+
+export function refineSelectedChanges(
+  jobDescription: string,
+  instruction: string,
+  summary: string | null,
+  bullets: BulletRewrite[]
+) {
+  return request<RefinementResponse>("/optimize/refine", {
+    method: "POST",
+    body: JSON.stringify({
+      job_description: jobDescription,
+      instruction,
+      summary,
+      bullets
+    })
   });
 }
 

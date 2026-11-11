@@ -13,6 +13,9 @@ out/
 
 # Python
 
+# Local D: runtime, caches, logs, and browser-check artifacts
+.local/
+
 venv/
 **/venv/
 **pycache**/

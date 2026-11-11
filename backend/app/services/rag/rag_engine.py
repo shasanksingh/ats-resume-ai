@@ -2,12 +2,6 @@ import re
 from pathlib import Path
 from typing import Dict, List
 
-import chromadb
-from langchain_community.document_loaders import TextLoader
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
 from app.core.config import CHROMA_PATH, MODEL_LOCAL_FILES_ONLY, RAG_DATA_DIR
 
 
@@ -23,6 +17,13 @@ GENERIC_GUIDANCE_SOURCES = {"ats_rules", "recruiter_rules"}
 
 
 def get_embeddings():
+    if MODEL_LOCAL_FILES_ONLY:
+        from huggingface_hub import try_to_load_from_cache
+
+        if not isinstance(try_to_load_from_cache(EMBEDDING_MODEL, "config.json"), str):
+            raise RuntimeError("Local embedding model is not cached; use keyword guidance.")
+    from langchain_community.embeddings import HuggingFaceEmbeddings
+
     return HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
         model_kwargs={"local_files_only": MODEL_LOCAL_FILES_ONLY},
@@ -30,6 +31,14 @@ def get_embeddings():
 
 
 def create_vector_db():
+    if not guidance_corpus_available():
+        raise FileNotFoundError(f"No RAG text files found in {RAG_DATA_DIR}")
+    # Check optional model availability before loading the semantic stack.
+    embeddings = get_embeddings()
+    import chromadb
+    from langchain_community.vectorstores import Chroma
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
     documents = load_documents()
     if not documents:
         raise FileNotFoundError(f"No RAG text files found in {RAG_DATA_DIR}")
@@ -45,7 +54,7 @@ def create_vector_db():
 
     return Chroma.from_documents(
         docs,
-        get_embeddings(),
+        embeddings,
         client=client,
         collection_name=COLLECTION_NAME,
     )
@@ -56,6 +65,8 @@ def guidance_corpus_available() -> bool:
 
 
 def load_documents():
+    from langchain_community.document_loaders import TextLoader
+
     documents = []
     for path in sorted(Path(RAG_DATA_DIR).glob("*.txt")):
         loader = TextLoader(str(path), encoding="utf-8")
@@ -87,9 +98,12 @@ def vector_db_is_stale() -> bool:
 def get_vector_db():
     if vector_db_is_stale():
         return create_vector_db()
+    embeddings = get_embeddings()
+    from langchain_community.vectorstores import Chroma
+
     return Chroma(
         persist_directory=CHROMA_PATH,
-        embedding_function=get_embeddings(),
+        embedding_function=embeddings,
         collection_name=COLLECTION_NAME,
     )
 

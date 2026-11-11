@@ -1,13 +1,17 @@
 # ATS Resume Studio
 
-ATS Resume Studio is a local-first resume analysis and optimization platform for ATS-focused job applications. It uploads a PDF resume, compares it with a target job description, explains the match score, recommends truthful improvements, and exports optimized DOCX, PDF, and Jake's Resume LaTeX output.
+ATS Resume Studio is a local-first resume analysis and optimization platform for ATS-focused job applications. It uploads a PDF resume, compares it with a target job description, explains the match score, recommends truthful improvements, and exports optimized DOCX, PDF, and Jake's Resume LaTeX output. Optional NVIDIA Mistral refinement can edit only the changes a user explicitly selects.
 
-The project does not use OpenAI APIs, Gemini APIs, or paid services.
+The core analysis and deterministic optimizer do not require a paid AI service. Optional prompt-based refinement uses an NVIDIA API key configured only on the backend.
 
 ## Features
 
 - PDF resume upload with validation, drag/drop support, and progress feedback.
-- Resume parsing for contact details, skills, experience, projects, education, links, and sections.
+- Layout-aware resume parsing for contact details, location, skills, experience, projects, education, links, and varied section headings.
+- Extraction confidence, detected-section diagnostics, and actionable parsing warnings in the analysis dashboard.
+- Per-change approval for optimized summaries and bullets before LaTeX generation.
+- Prompt-based refinement of selected changes through NVIDIA Mistral, with short payloads and response caching.
+- Automatic deletion of uploaded PDFs and generated resume files after 24 hours.
 - ATS score generation with category breakdown and explainable scoring evidence.
 - Job-description matching with matched skills, missing skills, and keyword coverage.
 - Local role guidance for software, data, support, electrical, mechanical, civil, business, operations, healthcare, and other roles.
@@ -97,9 +101,42 @@ RAG_DATA_DIR=backend/rag-data
 CHROMA_PATH=backend/vector_db
 DATABASE_PATH=backend/data/ats_resume.db
 MODEL_LOCAL_FILES_ONLY=1
+UPLOAD_RETENTION_HOURS=24
+CLEANUP_INTERVAL_SECONDS=3600
+NVIDIA_API_KEY=replace-with-your-nvidia-api-key
+NVIDIA_MODEL=mistralai/mistral-large-4-1t-a52b
+NVIDIA_TIMEOUT_SECONDS=120
+NVIDIA_MAX_TOKENS=1200
 ```
 
 ## Frontend Setup
+
+For the restored Windows installation, both runtimes and dependencies live on D:.
+Start both servers from the repository root:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/start-local.ps1
+```
+
+This uses the existing Node installation in `D:\NodeJS\node-v22.23.2-win-x64`
+and Python environment in `.local\venv`. Logs, temporary files, and application
+caches stay in `.local` on D:. The older `backend\venv` still points to the
+removed C: Python installation and should not be used.
+
+To recreate the Python environment using the existing D: Python installation:
+
+```powershell
+$env:TEMP = "$PWD\.local\tmp"
+$env:TMP = $env:TEMP
+$env:PIP_CACHE_DIR = "$PWD\.local\pip-cache"
+New-Item -ItemType Directory -Force $env:TEMP | Out-Null
+& D:\Software_Install\python.exe -m venv .local\venv
+& .\.local\venv\Scripts\python.exe -m pip install -r backend\requirements.txt pytest httpx
+```
+
+The NVIDIA request timeout defaults to 120 seconds; the frontend proxy allows
+150 seconds so the API can return its own timeout message. Update an existing
+`backend/.env` timeout if it still uses 25 seconds.
 
 ```powershell
 cd frontend
@@ -155,7 +192,7 @@ If no local compiler is available, the app uses a built-in PDF fallback so users
 
 1. Upload a text-based PDF resume.
 2. Paste the complete target job description.
-3. Run ATS analysis.
+3. ATS analysis starts automatically and reports extraction confidence.
 4. Review score, skill match, missing skills, strengths, weaknesses, and role guidance.
 5. Confirm any missing skills only when the candidate can defend them in an interview.
 6. Optimize the resume.

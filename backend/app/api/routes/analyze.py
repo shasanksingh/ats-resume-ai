@@ -23,7 +23,10 @@ def analyze_resume(payload: AnalyzeRequest):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     structured_resume = extract_resume_data(extracted_text)
-    structured_resume["links"] = extract_links_from_pdf(str(pdf_path))
+    structured_resume["links"] = {
+        **structured_resume.get("links", {}),
+        **extract_links_from_pdf(str(pdf_path)),
+    }
     response = {
         "filename": payload.filename,
         "resume_data": structured_resume,

@@ -64,7 +64,7 @@ export default function Home() {
               </Button>
             </div>
             <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-zinc-600">
-              {["No paid services", "Local role guidance", "DOCX, PDF, and LaTeX export"].map((item) => (
+              {["Optional Mistral refinement", "Local role guidance", "DOCX, PDF, and LaTeX export"].map((item) => (
                 <span className="flex items-center gap-2" key={item}>
                   <Check className="h-4 w-4 text-emerald-600" />
                   {item}
@@ -187,10 +187,10 @@ export default function Home() {
             <div className="text-left">
               <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-cyan-200">
                 <LockKeyhole className="h-3.5 w-3.5" />
-                Private local workflow
+                Privacy-controlled workflow
               </div>
               <h2 className="mt-5 max-w-2xl text-3xl font-bold tracking-tight sm:text-4xl">Make the next application more deliberate.</h2>
-              <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-300">Upload a resume, match it to the role, and leave with a recruiter-ready improvement plan plus editable exports. No paid service required.</p>
+              <p className="mt-4 max-w-xl text-sm leading-7 text-zinc-300">Upload a resume, match it to the role, approve individual changes, and optionally refine only those selections with NVIDIA Mistral before export.</p>
               <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                 <Button asChild className="w-full justify-center bg-white text-zinc-950 hover:bg-zinc-100 sm:w-auto">
                   <Link href="/upload">Upload resume <ArrowRight className="h-4 w-4" /></Link>
@@ -220,7 +220,7 @@ export default function Home() {
             <div className="flex items-center gap-2 font-bold text-zinc-900"><FileCheck2 className="h-4 w-4 text-indigo-600" />ATS Resume Studio</div>
             <p className="mt-1 text-xs text-zinc-500">Resume matching, explainable scoring, and editable exports.</p>
           </div>
-          <p>Local-first analysis. Truthful optimization. No paid API dependency.</p>
+          <p>Local-first analysis. Optional AI refinement. Automatic 24-hour file deletion.</p>
         </div>
       </footer>
     </main>

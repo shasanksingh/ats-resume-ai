@@ -1,6 +1,6 @@
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ApiModel(BaseModel):
@@ -36,11 +36,32 @@ class RebuildRequest(ApiModel):
     confirmed_keywords: List[str] = Field(default_factory=list, max_length=20)
 
 
+class SelectedBullet(ApiModel):
+    original: str = Field(..., min_length=1, max_length=2000)
+    improved: str = Field(..., min_length=1, max_length=2000)
+    reason: str = Field(default="", max_length=800)
+
+
 class LatexRequest(ApiModel):
     filename: str = Field(..., min_length=1, max_length=255)
     job_description: str = Field(..., min_length=1, max_length=50000)
     template: Literal["jakes"] = "jakes"
     confirmed_keywords: List[str] = Field(default_factory=list, max_length=20)
+    selected_summary: Optional[str] = Field(default=None, max_length=4000)
+    selected_bullets: List[SelectedBullet] = Field(default_factory=list, max_length=8)
+
+
+class RefinementRequest(ApiModel):
+    job_description: str = Field(..., min_length=1, max_length=50000)
+    instruction: str = Field(..., min_length=3, max_length=2000)
+    summary: Optional[str] = Field(default=None, max_length=4000)
+    bullets: List[SelectedBullet] = Field(default_factory=list, max_length=8)
+
+    @model_validator(mode="after")
+    def require_selected_change(self):
+        if not self.summary and not self.bullets:
+            raise ValueError("Select at least one summary or bullet change to refine.")
+        return self
 
 
 class BulletRewrite(BaseModel):

@@ -4,6 +4,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from app.core.config import MAX_UPLOAD_SIZE_BYTES, UPLOAD_DIR
 from app.core.files import safe_pdf_name, unique_pdf_path
+from app.core.retention import cleanup_expired_files, expires_at_iso
 
 router = APIRouter(prefix="/upload", tags=["Upload"])
 CHUNK_SIZE = 1024 * 1024
@@ -12,6 +13,7 @@ PDF_CONTENT_TYPES = {"application/pdf", "application/x-pdf", "application/octet-
 
 @router.post("/resume")
 async def upload_resume(file: UploadFile = File(...)):
+    cleanup_expired_files()
     try:
         safe_pdf_name(file.filename)
     except ValueError as exc:
@@ -58,4 +60,5 @@ async def upload_resume(file: UploadFile = File(...)):
         "original_filename": file.filename,
         "status": "uploaded successfully",
         "size_bytes": size_bytes,
+        "expires_at": expires_at_iso(),
     }

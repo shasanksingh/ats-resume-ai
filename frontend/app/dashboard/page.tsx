@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import {
   ArrowRight,
@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { AnalysisResponse, analyzeResume, WorkflowState } from "@/lib/api";
-import { readStoredJson } from "@/lib/storage";
+import { readActiveWorkflow, readStoredJson } from "@/lib/storage";
 import { ScoreGauge } from "@/components/score-gauge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,11 +37,29 @@ export default function DashboardPage() {
   const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
+  const autoAnalysisStarted = useRef(false);
 
   useEffect(() => {
-    setWorkflow(readStoredJson<WorkflowState>("ats-workflow"));
-    setAnalysis(readStoredJson<AnalysisResponse>("ats-analysis"));
+    const storedWorkflow = readActiveWorkflow();
+    const storedAnalysis = readStoredJson<AnalysisResponse>("ats-analysis");
+    setWorkflow(storedWorkflow);
+    setAnalysis(storedAnalysis);
     setHydrated(true);
+
+    if (storedWorkflow && !storedAnalysis && !autoAnalysisStarted.current) {
+      autoAnalysisStarted.current = true;
+      setLoading(true);
+      analyzeResume(storedWorkflow.filename, storedWorkflow.jobDescription)
+        .then((result) => {
+          setAnalysis(result);
+          localStorage.setItem("ats-analysis", JSON.stringify(result));
+          setNotice({ message: "Resume parsed and ATS analysis completed.", tone: "success" });
+        })
+        .catch((exc: unknown) => {
+          setNotice({ message: exc instanceof Error ? exc.message : "Analysis failed.", tone: "error" });
+        })
+        .finally(() => setLoading(false));
+    }
   }, []);
 
   async function runAnalysis() {
@@ -61,6 +79,7 @@ export default function DashboardPage() {
   }
 
   const ats = analysis?.ats;
+  const extractionQuality = analysis?.resume_data?.extraction_quality;
   const sectionScores = useMemo(() => Object.entries(ats?.section_scores || {}), [ats]);
   const skillMatch = useMemo(() => {
     if (!ats?.jd_skills?.length) return ats?.score ?? 0;
@@ -93,9 +112,9 @@ export default function DashboardPage() {
           <p className="mt-2 text-sm leading-6 text-zinc-600">Review ATS alignment, resume structure, recruiter signals, and role-specific gaps.</p>
         </div>
         <div className="flex shrink-0 flex-col gap-2 sm:flex-row">
-          <Button onClick={runAnalysis} disabled={loading} variant="secondary" className="w-full justify-center sm:w-auto">
+          <Button onClick={() => runAnalysis()} disabled={loading} variant="secondary" className="w-full justify-center sm:w-auto">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SearchCheck className="h-4 w-4" />}
-            {analysis ? "Run again" : "Analyze resume"}
+            {loading ? "Reading resume" : analysis ? "Run again" : "Analyze resume"}
           </Button>
           <Button variant="outline" onClick={() => router.push("/results")} disabled={!analysis} className="w-full justify-center sm:w-auto">
             View results <ArrowRight className="h-4 w-4" />
@@ -105,7 +124,7 @@ export default function DashboardPage() {
 
       <section className="grid overflow-hidden rounded-2xl border border-zinc-200 bg-white sm:grid-cols-3">
         <WorkflowStep icon={UploadCloud} label="Resume uploaded" copy="PDF validated and stored" state="complete" />
-        <WorkflowStep icon={ListChecks} label="ATS analysis" copy={analysis ? "Score and gaps ready" : "Run the role comparison"} state={analysis ? "complete" : "active"} />
+        <WorkflowStep icon={ListChecks} label="ATS analysis" copy={analysis ? "Score and gaps ready" : loading ? "Extracting resume details" : "Run the role comparison"} state={analysis ? "complete" : "active"} />
         <WorkflowStep icon={ExportCubeIcon} label="Optimize and export" copy="Build PDF, DOCX, or LaTeX" state="next" />
       </section>
 
@@ -162,8 +181,34 @@ export default function DashboardPage() {
             <Card>
               <CardHeader><CardTitle>Parsed resume snapshot</CardTitle></CardHeader>
               <CardContent className="space-y-4">
+                {extractionQuality ? (
+                  <div className={`rounded-2xl border p-4 ${extractionQuality.score >= 85 ? "border-emerald-200 bg-emerald-50/70" : "border-amber-200 bg-amber-50/70"}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-500">Extraction quality</p>
+                        <p className="mt-1 text-lg font-bold text-zinc-950">{extractionQuality.label}</p>
+                      </div>
+                      <span className={`rounded-full px-3 py-1.5 text-sm font-black ${extractionQuality.score >= 85 ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                        {extractionQuality.score}%
+                      </span>
+                    </div>
+                    <Progress value={extractionQuality.score} className="mt-3" />
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {extractionQuality.detected_sections.map((section) => (
+                        <span className="rounded-md bg-white/80 px-2 py-1 text-[11px] font-semibold capitalize text-zinc-600" key={section}>{section}</span>
+                      ))}
+                    </div>
+                    {extractionQuality.warnings.length ? (
+                      <div className="mt-3 space-y-1">
+                        {extractionQuality.warnings.slice(0, 3).map((warning) => (
+                          <p className="flex gap-2 text-xs leading-5 text-amber-900" key={warning}><TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />{warning}</p>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Snapshot icon={UserRound} title={String(analysis?.resume_data?.name || "Candidate name")} copy={String(analysis?.resume_data?.email || "Contact details appear after analysis.")} />
+                  <Snapshot icon={UserRound} title={String(analysis?.resume_data?.name || "Candidate name")} copy={analysis ? [analysis.resume_data?.email, analysis.resume_data?.phone, analysis.resume_data?.location].filter(Boolean).join(" | ") || "No contact details detected." : "Contact details appear after analysis."} />
                   <Snapshot icon={BriefcaseBusiness} title="Detected experience" copy={analysis ? `${(analysis.resume_data?.experience || []).length} roles, ${(analysis.resume_data?.projects || []).length} projects, and ${(analysis.resume_data?.education_entries || []).length} education entries found.` : "Role and project counts appear after analysis."} />
                 </div>
                 <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-5">

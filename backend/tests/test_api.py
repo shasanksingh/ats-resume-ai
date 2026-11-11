@@ -1,4 +1,6 @@
+import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -8,6 +10,7 @@ from fastapi.testclient import TestClient
 from fastapi.staticfiles import StaticFiles
 
 from app.main import app
+from app.core.retention import cleanup_expired_files
 from app.services.llm.resume_optimizer import optimize_resume
 from app.services.parser.resume_parser import extract_resume_data
 from app.services.rebuilder.latex_resume import build_jakes_resume
@@ -50,6 +53,7 @@ class ApiContractTests(unittest.TestCase):
         self.patchers = [
             patch("app.core.files.UPLOAD_DIR", self.upload_dir),
             patch("app.api.routes.upload.UPLOAD_DIR", self.upload_dir),
+            patch("app.core.retention.UPLOAD_DIR", self.upload_dir),
             patch("app.services.rebuilder.resume_rebuilder.OUTPUT_DIR", self.upload_dir / "optimized"),
             patch("app.services.rebuilder.latex_resume.OUTPUT_DIR", self.upload_dir / "optimized"),
             patch("app.services.rebuilder.latex_compiler.OUTPUT_DIR", self.upload_dir / "optimized"),
@@ -101,6 +105,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertNotEqual(first.json()["filename"], second.json()["filename"])
         self.assertTrue((self.upload_dir / first.json()["filename"]).is_file())
         self.assertEqual(first.json()["size_bytes"], len(self.pdf))
+        self.assertIn("expires_at", first.json())
 
     def test_upload_rejects_invalid_extension_and_spoofed_pdf(self):
         wrong_extension = self.client.post(
@@ -289,6 +294,99 @@ class ApiContractTests(unittest.TestCase):
         self.assertTrue(fallback.json()["fallback"])
         self.assertEqual(fallback.json()["compiler"], "Built-in PDF renderer")
 
+    def test_selected_changes_are_the_only_changes_applied_to_latex(self):
+        uploaded = self.upload().json()
+        original = "Built FastAPI services that improved response time by 35%."
+        response = self.client.post(
+            "/optimize/latex",
+            json={
+                "filename": uploaded["filename"],
+                "job_description": "Backend Engineer with Python and FastAPI.",
+                "template": "jakes",
+                "selected_summary": "Selected summary focused on reliable backend delivery.",
+                "selected_bullets": [
+                    {
+                        "original": original,
+                        "improved": "Optimized FastAPI services, improving response time by 35%.",
+                        "reason": "Approved rewrite",
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["applied_changes"], 2)
+        self.assertIn("Selected summary focused", payload["latex_source"])
+        self.assertIn("Optimized FastAPI services", payload["latex_source"])
+
+    def test_nvidia_refinement_route_returns_structured_selected_changes(self):
+        refined = {
+            "summary": "Concise backend summary.",
+            "bullets": [
+                {
+                    "original": "Built APIs.",
+                    "improved": "Built reliable APIs.",
+                    "reason": "More specific",
+                }
+            ],
+            "provider": "mistralai/mistral-large-4-1t-a52b",
+            "cached": False,
+            "latency_ms": 420,
+        }
+        with patch("app.api.routes.optimize.refine_selected_changes", return_value=refined) as refine:
+            response = self.client.post(
+                "/optimize/refine",
+                json={
+                    "job_description": "Backend Engineer",
+                    "instruction": "Make this concise",
+                    "summary": "Long backend summary.",
+                    "bullets": [
+                        {
+                            "original": "Built APIs.",
+                            "improved": "Developed APIs.",
+                            "reason": "Initial suggestion",
+                        }
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["summary"], "Concise backend summary.")
+        self.assertEqual(response.json()["bullets"][0]["original"], "Built APIs.")
+        refine.assert_called_once()
+
+    def test_retention_cleanup_removes_only_expired_resume_artifacts(self):
+        old_pdf = self.upload_dir / "old.pdf"
+        fresh_pdf = self.upload_dir / "fresh.pdf"
+        ignored = self.upload_dir / "notes.txt"
+        old_pdf.write_bytes(self.pdf)
+        fresh_pdf.write_bytes(self.pdf)
+        ignored.write_text("keep", encoding="utf-8")
+        now = time.time()
+        os.utime(old_pdf, (now - 25 * 3600, now - 25 * 3600))
+        os.utime(ignored, (now - 25 * 3600, now - 25 * 3600))
+
+        with (
+            patch("app.core.retention.UPLOAD_DIR", self.upload_dir),
+            patch("app.core.retention.UPLOAD_RETENTION_HOURS", 24),
+        ):
+            result = cleanup_expired_files(now=now)
+
+        self.assertEqual(result["removed"], 1)
+        self.assertFalse(old_pdf.exists())
+        self.assertTrue(fresh_pdf.exists())
+        self.assertTrue(ignored.exists())
+
+    def test_refinement_rejects_empty_selection_before_calling_provider(self):
+        with patch("app.api.routes.optimize.refine_selected_changes") as refine:
+            response = self.client.post(
+                "/optimize/refine",
+                json={"job_description": "Backend Engineer", "instruction": "Make concise"},
+            )
+        self.assertEqual(response.status_code, 422)
+        refine.assert_not_called()
+
     def test_rag_routes_return_expected_contracts(self):
         rag_result = [{"content": "Local role guidance", "source": "test_rules.txt", "retrieval": "keyword"}]
         with (
@@ -413,6 +511,36 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn(r"\faEnvelope", latex)
         self.assertIn(r"\textbf{AI-Powered SQL Copilot}", latex)
         self.assertIn(r"\textbf{AI Conversational Platform}", latex)
+
+    def test_parser_handles_inline_dates_heading_variants_and_contact_links(self):
+        text = """
+        TAYLOR KIM
+        taylor.kim@example.com | +1 (415) 555-0199 | San Francisco, USA
+        linkedin.com/in/taylorkim | github.com/taylorkim
+        PROFESSIONAL PROFILE
+        Platform engineer focused on reliable cloud services and developer productivity.
+        CORE COMPETENCIES: Python | AWS | Kubernetes | PostgreSQL
+        EMPLOYMENT HISTORY
+        Senior Software Engineer | Northstar Labs | Jan 2022 - Present
+        • Built an internal deployment platform used by 40 engineering teams.
+        • Reduced production recovery time by 35% through automated runbooks.
+        ACADEMIC QUALIFICATIONS
+        State University | Bachelor of Science in Computer Science | 2017 - 2021
+        """
+
+        parsed = extract_resume_data(text)
+
+        self.assertEqual(parsed["name"], "Taylor Kim")
+        self.assertEqual(parsed["phone"], "+1 (415) 555-0199")
+        self.assertEqual(parsed["location"], "San Francisco, USA")
+        self.assertEqual(parsed["experience"][0]["company"], "Northstar Labs")
+        self.assertEqual(parsed["experience"][0]["title"], "Senior Software Engineer")
+        self.assertEqual(parsed["education_entries"][0]["institution"], "State University")
+        self.assertEqual(parsed["education_entries"][0]["degree"], "Bachelor of Science in Computer Science")
+        self.assertIn("linkedin", parsed["links"])
+        self.assertIn("github", parsed["links"])
+        self.assertGreaterEqual(parsed["extraction_quality"]["score"], 80)
+        self.assertIn("experience", parsed["extraction_quality"]["detected_sections"])
 
     def test_optimizer_promotes_supported_keywords_and_requires_confirmation_for_missing_skills(self):
         resume_text = """

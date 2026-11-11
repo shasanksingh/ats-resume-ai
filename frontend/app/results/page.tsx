@@ -4,8 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
+  Bot,
   Braces,
   Check,
+  CheckSquare2,
   CheckCircle2,
   Clipboard,
   Download,
@@ -15,6 +17,8 @@ import {
   Lightbulb,
   Loader2,
   RefreshCw,
+  Sparkles,
+  Square,
   ShieldCheck,
   Target,
   TriangleAlert,
@@ -24,6 +28,7 @@ import { useRouter } from "next/navigation";
 import {
   AnalysisResponse,
   apiUrl,
+  BulletRewrite,
   compileLatex,
   generateLatex,
   getLatexCompilerStatus,
@@ -34,16 +39,18 @@ import {
   optimizeResume,
   RagSearchResponse,
   rebuildResume,
+  refineSelectedChanges,
   searchRag,
   WorkflowState
 } from "@/lib/api";
-import { readStoredJson } from "@/lib/storage";
+import { readActiveWorkflow, readStoredJson } from "@/lib/storage";
 import { ScoreGauge } from "@/components/score-gauge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toast } from "@/components/ui/toast";
+import { Textarea } from "@/components/ui/textarea";
 import { InsightStackIcon } from "@/components/visuals/product-icons";
 
 type Notice = { message: string; tone: "success" | "error" | "info" } | null;
@@ -62,11 +69,15 @@ export default function ResultsPage() {
   const [copied, setCopied] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [confirmedSkills, setConfirmedSkills] = useState<string[]>([]);
-  const [loading, setLoading] = useState<"" | "optimize" | "docx" | "pdf" | "latex" | "compile">("");
+  const [selectedSummary, setSelectedSummary] = useState(false);
+  const [selectedBulletOriginals, setSelectedBulletOriginals] = useState<string[]>([]);
+  const [instruction, setInstruction] = useState("");
+  const [refinementMeta, setRefinementMeta] = useState<{ provider: string; cached: boolean; latencyMs: number } | null>(null);
+  const [loading, setLoading] = useState<"" | "optimize" | "refine" | "docx" | "pdf" | "latex" | "compile">("");
   const [notice, setNotice] = useState<Notice>(null);
 
   useEffect(() => {
-    const savedWorkflow = readStoredJson<WorkflowState>("ats-workflow");
+    const savedWorkflow = readActiveWorkflow();
     setWorkflow(savedWorkflow);
     setAnalysis(readStoredJson<AnalysisResponse>("ats-analysis"));
     setOptimized(readStoredJson<OptimizationResponse>("ats-optimized"));
@@ -101,6 +112,11 @@ export default function ResultsPage() {
     try {
       const result = await optimizeResume(workflow.filename, workflow.jobDescription, confirmedSkills);
       setOptimized(result);
+      setSelectedSummary(false);
+      setSelectedBulletOriginals([]);
+      setRefinementMeta(null);
+      setLatex(null);
+      setLatexPreview(null);
       localStorage.setItem("ats-optimized", JSON.stringify(result));
       setNotice({ message: "Resume optimization and role guidance are ready.", tone: "success" });
     } catch (exc) {
@@ -130,7 +146,13 @@ export default function ResultsPage() {
     setLoading("latex");
     setNotice(null);
     try {
-      const result = await generateLatex(workflow.filename, workflow.jobDescription, confirmedSkills);
+      const result = await generateLatex(
+        workflow.filename,
+        workflow.jobDescription,
+        confirmedSkills,
+        selectedSummaryText,
+        selectedBullets
+      );
       setLatex(result);
       setLatexPreview(null);
       setNotice({ message: "Jake's Resume LaTeX source generated successfully.", tone: "success" });
@@ -146,7 +168,13 @@ export default function ResultsPage() {
     setLoading("compile");
     setNotice(null);
     try {
-      const result = await compileLatex(workflow.filename, workflow.jobDescription, confirmedSkills);
+      const result = await compileLatex(
+        workflow.filename,
+        workflow.jobDescription,
+        confirmedSkills,
+        selectedSummaryText,
+        selectedBullets
+      );
       setLatexPreview(result);
       setNotice({
         message: result.fallback
@@ -172,6 +200,72 @@ export default function ResultsPage() {
     setDownload(null);
   }
 
+  function invalidateLatex() {
+    setLatex(null);
+    setLatexPreview(null);
+  }
+
+  function toggleSummarySelection() {
+    setSelectedSummary((current) => !current);
+    invalidateLatex();
+  }
+
+  function toggleBulletSelection(original: string) {
+    setSelectedBulletOriginals((current) => (
+      current.includes(original)
+        ? current.filter((item) => item !== original)
+        : [...current, original]
+    ));
+    invalidateLatex();
+  }
+
+  function selectAllChanges() {
+    if (!optimized) return;
+    setSelectedSummary(Boolean(optimized.optimization.improved_summary));
+    setSelectedBulletOriginals(optimized.optimization.improved_bullets.map((item) => item.original));
+    invalidateLatex();
+  }
+
+  function clearSelectedChanges() {
+    setSelectedSummary(false);
+    setSelectedBulletOriginals([]);
+    invalidateLatex();
+  }
+
+  async function applyInstruction() {
+    if (!workflow || !optimized || instruction.trim().length < 3 || selectionCount === 0) return;
+    setLoading("refine");
+    setNotice(null);
+    try {
+      const result = await refineSelectedChanges(
+        workflow.jobDescription,
+        instruction.trim(),
+        selectedSummaryText,
+        selectedBullets
+      );
+      const replacementBullets = new Map(result.bullets.map((item) => [item.original, item]));
+      const updated: OptimizationResponse = {
+        ...optimized,
+        optimization: {
+          ...optimized.optimization,
+          improved_summary: result.summary || optimized.optimization.improved_summary,
+          improved_bullets: optimized.optimization.improved_bullets.map(
+            (item) => replacementBullets.get(item.original) || item
+          )
+        }
+      };
+      setOptimized(updated);
+      localStorage.setItem("ats-optimized", JSON.stringify(updated));
+      setRefinementMeta({ provider: result.provider, cached: result.cached, latencyMs: result.latency_ms });
+      invalidateLatex();
+      setNotice({ message: "Selected changes were refined with your instruction.", tone: "success" });
+    } catch (exc) {
+      setNotice({ message: exc instanceof Error ? exc.message : "AI refinement failed.", tone: "error" });
+    } finally {
+      setLoading("");
+    }
+  }
+
   async function copyLatex() {
     if (!latex) return;
     await navigator.clipboard.writeText(latex.latex_source);
@@ -192,6 +286,12 @@ export default function ResultsPage() {
   const ragInsights = rag?.results?.length
     ? rag.results
     : optimized?.optimization.rag_guidance || [];
+  const selectedBullets: BulletRewrite[] = useMemo(
+    () => (optimized?.optimization.improved_bullets || []).filter((item) => selectedBulletOriginals.includes(item.original)),
+    [optimized, selectedBulletOriginals]
+  );
+  const selectedSummaryText = selectedSummary ? optimized?.optimization.improved_summary || null : null;
+  const selectionCount = selectedBullets.length + (selectedSummaryText ? 1 : 0);
 
   if (!hydrated) return <ResultsSkeleton />;
 
@@ -260,6 +360,7 @@ export default function ResultsPage() {
               <button
                 type="button"
                 aria-pressed={confirmedSkills.includes(skill)}
+                disabled={Boolean(loading)}
                 className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
                   confirmedSkills.includes(skill)
                     ? "border-indigo-300 bg-indigo-50 text-indigo-700"
@@ -336,13 +437,44 @@ export default function ResultsPage() {
         </Card>
       </section>
 
+      {optimized ? (
+        <section className="flex flex-col justify-between gap-4 rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-cyan-50 p-5 sm:flex-row sm:items-center">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white"><CheckSquare2 className="h-5 w-5" /></div>
+            <div>
+              <p className="text-sm font-black text-zinc-950">Review and approve changes</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-600">Choose exactly what goes into LaTeX. Unselected content stays identical to the uploaded resume.</p>
+              <p className="mt-2 text-xs font-bold text-indigo-700">{selectionCount} change{selectionCount === 1 ? "" : "s"} selected</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" className="flex-1 justify-center sm:flex-none" onClick={clearSelectedChanges} disabled={Boolean(loading) || selectionCount === 0}>Clear</Button>
+            <Button variant="secondary" className="flex-1 justify-center sm:flex-none" onClick={selectAllChanges} disabled={Boolean(loading)}>Select all</Button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.92fr)]">
         <div className="min-w-0 space-y-4">
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><InsightStackIcon className="h-7 w-7" />Optimized summary</CardTitle></CardHeader>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-3">
+                <CardTitle className="flex items-center gap-2"><InsightStackIcon className="h-7 w-7" />Optimized summary</CardTitle>
+                <button
+                  type="button"
+                  aria-pressed={selectedSummary}
+                  disabled={Boolean(loading) || !optimized?.optimization.improved_summary}
+                  onClick={toggleSummarySelection}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${selectedSummary ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-zinc-200 bg-white text-zinc-500 hover:border-indigo-200"}`}
+                >
+                  {selectedSummary ? <CheckSquare2 className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                  {selectedSummary ? "Selected" : "Use change"}
+                </button>
+              </div>
+            </CardHeader>
             <CardContent>
               {loading === "optimize" ? <Skeleton className="h-28" /> : (
-                <p className="rounded-2xl bg-zinc-950 p-5 text-sm leading-7 text-zinc-100">
+                <p className={`rounded-2xl p-5 text-sm leading-7 transition ${selectedSummary ? "bg-indigo-950 text-white ring-2 ring-indigo-300" : "bg-zinc-950 text-zinc-100"}`}>
                   {optimized?.optimization.improved_summary || "Run optimization to generate a role-targeted professional summary."}
                 </p>
               )}
@@ -408,29 +540,85 @@ export default function ResultsPage() {
           ) : null}
 
           <Card>
-            <CardHeader><CardTitle>Optimized experience bullets</CardTitle></CardHeader>
+            <CardHeader>
+              <CardTitle>Optimized experience bullets</CardTitle>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">Select only the rewrites you want included in the LaTeX resume.</p>
+            </CardHeader>
             <CardContent className="space-y-4">
               {loading === "optimize" ? <><Skeleton className="h-32" /><Skeleton className="h-32" /></> : null}
-              {!loading && (optimized?.optimization.improved_bullets || []).map((item, index) => (
-                <article className="rounded-2xl border border-zinc-200 p-4" key={`${item.original}-${index}`}>
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">Original</p>
+              {loading !== "optimize" && (optimized?.optimization.improved_bullets || []).map((item, index) => {
+                const selected = selectedBulletOriginals.includes(item.original);
+                return (
+                <article className={`rounded-2xl border p-4 transition ${selected ? "border-indigo-300 bg-indigo-50/40 shadow-sm" : "border-zinc-200"}`} key={`${item.original}-${index}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">Original</p>
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      disabled={Boolean(loading)}
+                      onClick={() => toggleBulletSelection(item.original)}
+                      className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${selected ? "border-indigo-300 bg-white text-indigo-700" : "border-zinc-200 bg-white text-zinc-500 hover:border-indigo-200"}`}
+                    >
+                      {selected ? <CheckSquare2 className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                      {selected ? "Selected" : "Use change"}
+                    </button>
+                  </div>
                   <p className="mt-2 text-sm leading-6 text-zinc-500">{item.original}</p>
                   <div className="my-4 h-px bg-zinc-100" />
                   <p className="text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">Suggested</p>
                   <p className="mt-2 text-sm font-medium leading-6 text-zinc-950">{item.improved}</p>
                   <p className="mt-3 text-xs leading-5 text-zinc-500">{item.reason}</p>
                 </article>
-              ))}
-              {!loading && !optimized?.optimization.improved_bullets?.length ? <Empty text="Improved bullets appear after optimization." /> : null}
+              );})}
+              {loading !== "optimize" && !optimized?.optimization.improved_bullets?.length ? <Empty text="Improved bullets appear after optimization." /> : null}
             </CardContent>
           </Card>
         </div>
 
         <div className="min-w-0 space-y-4 xl:sticky xl:top-24 xl:self-start">
+          <Card className="overflow-hidden border-indigo-200">
+            <div className="border-b border-indigo-100 bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-4 text-white">
+              <div className="flex items-center gap-2"><Bot className="h-5 w-5" /><p className="text-sm font-black">Refine selected changes</p></div>
+              <p className="mt-1 text-xs leading-5 text-indigo-100">One compact NVIDIA Mistral request edits only the changes you approved.</p>
+            </div>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <span className="font-bold text-zinc-700">Custom instruction</span>
+                <span className="rounded-full bg-indigo-50 px-2.5 py-1 font-bold text-indigo-700">{selectionCount} selected</span>
+              </div>
+              <Textarea
+                value={instruction}
+                onChange={(event) => setInstruction(event.target.value)}
+                className="min-h-28 resize-y"
+                maxLength={2000}
+                disabled={loading === "refine"}
+                placeholder="Example: Make these changes more concise, use stronger action language, and keep every fact unchanged."
+              />
+              <div className="flex items-center justify-between gap-3 text-[11px] text-zinc-500">
+                <span>{instruction.length.toLocaleString()} / 2,000</span>
+                <span>API key remains on the backend</span>
+              </div>
+              <Button
+                className="w-full justify-center"
+                variant="secondary"
+                onClick={applyInstruction}
+                disabled={Boolean(loading) || instruction.trim().length < 3 || selectionCount === 0}
+              >
+                {loading === "refine" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                {loading === "refine" ? "Refining selected changes" : "Apply instruction with Mistral"}
+              </Button>
+              {refinementMeta ? (
+                <p className="rounded-xl bg-emerald-50 p-3 text-xs leading-5 text-emerald-800">
+                  Updated with {refinementMeta.provider.split("/").pop()} in {refinementMeta.cached ? "a cached response" : `${(refinementMeta.latencyMs / 1000).toFixed(1)}s`}.
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader><CardTitle>Build and export resume</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm leading-6 text-zinc-600">Export a compact resume or generate editable Jake&apos;s Resume LaTeX source.</p>
+              <p className="text-sm leading-6 text-zinc-600">DOCX and PDF keep the standard optimizer. LaTeX applies exactly the {selectionCount} approved change{selectionCount === 1 ? "" : "s"} above.</p>
               <div className="grid gap-2 sm:grid-cols-3">
                 <Button variant="outline" onClick={() => rebuild("docx")} disabled={Boolean(loading)}>
                   {loading === "docx" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
@@ -442,9 +630,10 @@ export default function ResultsPage() {
                 </Button>
                 <Button variant="outline" onClick={createLatex} disabled={Boolean(loading)}>
                   {loading === "latex" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Braces className="h-4 w-4" />}
-                  LaTeX
+                  Build LaTeX
                 </Button>
               </div>
+              <p className="flex items-start gap-2 rounded-xl bg-zinc-50 p-3 text-xs leading-5 text-zinc-600"><ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />Uploaded and generated resume files are automatically removed after 24 hours.</p>
               {download ? (
                 <a className="flex items-center gap-2 rounded-xl bg-emerald-50 p-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100" href={download.href} download>
                   <Download className="h-4 w-4" />
@@ -462,7 +651,7 @@ export default function ResultsPage() {
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">Overleaf-style preview</p>
               <h2 className="mt-1 truncate text-xl font-bold">Jake&apos;s Resume LaTeX</h2>
-              <p className="mt-1 text-xs leading-5 text-zinc-400">{compilerStatus?.message || "Checking for a local LaTeX compiler..."}</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-400">{latex.applied_changes} approved change{latex.applied_changes === 1 ? "" : "s"} applied | {compilerStatus?.message || "Checking for a local LaTeX compiler..."}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" className="h-9 border-white/15 bg-white/5 px-3 text-white hover:bg-white/10" onClick={copyLatex}>

@@ -3,6 +3,7 @@ import hmac
 import os
 import secrets
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,7 +19,7 @@ class AuthError(ValueError):
 def initialize_auth_db(db_path: Path | None = None) -> None:
     path = db_path or DATABASE_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute(
             """
@@ -70,7 +71,7 @@ def create_user(name: str | None, email: str, password: str) -> dict:
 
     initialize_auth_db()
     try:
-        with sqlite3.connect(DATABASE_PATH) as connection:
+        with closing(sqlite3.connect(DATABASE_PATH)) as connection, connection:
             connection.row_factory = sqlite3.Row
             cursor = connection.execute(
                 """
@@ -94,7 +95,7 @@ def create_user(name: str | None, email: str, password: str) -> dict:
 def login_user(email: str, password: str) -> dict:
     initialize_auth_db()
     normalized_email = normalize_email(email)
-    with sqlite3.connect(DATABASE_PATH) as connection:
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection, connection:
         connection.row_factory = sqlite3.Row
         row = connection.execute(
             "SELECT id, name, email, password_hash, salt, created_at FROM users WHERE email = ?",
@@ -112,7 +113,7 @@ def get_user_by_token(token: str | None) -> dict | None:
     if not token:
         return None
     initialize_auth_db()
-    with sqlite3.connect(DATABASE_PATH) as connection:
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection, connection:
         connection.row_factory = sqlite3.Row
         row = connection.execute(
             """
@@ -130,7 +131,7 @@ def revoke_session(token: str | None) -> None:
     if not token:
         return
     initialize_auth_db()
-    with sqlite3.connect(DATABASE_PATH) as connection:
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection, connection:
         connection.execute("DELETE FROM sessions WHERE token = ?", (token,))
 
 
@@ -144,7 +145,7 @@ def create_feedback(
     initialize_auth_db()
     user = get_user_by_token(token)
     created_at = timestamp()
-    with sqlite3.connect(DATABASE_PATH) as connection:
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection, connection:
         cursor = connection.execute(
             """
             INSERT INTO feedback (user_id, visitor_id, rating, message, page, created_at)
@@ -169,7 +170,7 @@ def create_feedback(
 
 def create_session(user_id: int) -> str:
     token = secrets.token_urlsafe(32)
-    with sqlite3.connect(DATABASE_PATH) as connection:
+    with closing(sqlite3.connect(DATABASE_PATH)) as connection, connection:
         connection.execute(
             "INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)",
             (token, user_id, timestamp()),
