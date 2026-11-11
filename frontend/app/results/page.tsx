@@ -27,6 +27,9 @@ import {
 import { useRouter } from "next/navigation";
 import {
   AnalysisResponse,
+  AtsResult,
+  ExportDetails,
+  scoreSelectedChanges,
   apiUrl,
   BulletRewrite,
   compileLatex,
@@ -75,6 +78,9 @@ export default function ResultsPage() {
   const [refinementMeta, setRefinementMeta] = useState<{ provider: string; cached: boolean; latencyMs: number } | null>(null);
   const [loading, setLoading] = useState<"" | "optimize" | "refine" | "docx" | "pdf" | "latex" | "compile">("");
   const [notice, setNotice] = useState<Notice>(null);
+  const [selectionScore, setSelectionScore] = useState<{ key: string; ats: AtsResult; baseline_ats: AtsResult } | null>(null);
+  const [exportResult, setExportResult] = useState<{ key: string; details: ExportDetails } | null>(null);
+  const [scoreError, setScoreError] = useState("");
 
   useEffect(() => {
     const savedWorkflow = readActiveWorkflow();
@@ -112,13 +118,15 @@ export default function ResultsPage() {
     try {
       const result = await optimizeResume(workflow.filename, workflow.jobDescription, confirmedSkills);
       setOptimized(result);
+      setDownload(null);
+      setExportResult(null);
       setSelectedSummary(false);
       setSelectedBulletOriginals([]);
       setRefinementMeta(null);
       setLatex(null);
       setLatexPreview(null);
       localStorage.setItem("ats-optimized", JSON.stringify(result));
-      setNotice({ message: "Resume optimization and role guidance are ready.", tone: "success" });
+      setNotice({ message: result.optimization.refinement_provider ? "NVIDIA optimization is ready. Review and select the changes to export." : "Local suggestions are ready. See the optimization notes for NVIDIA status.", tone: result.optimization.refinement_provider ? "success" : "info" });
     } catch (exc) {
       setNotice({ message: exc instanceof Error ? exc.message : "Optimization failed.", tone: "error" });
     } finally {
@@ -131,7 +139,8 @@ export default function ResultsPage() {
     setLoading(format);
     setNotice(null);
     try {
-      const result = await rebuildResume(workflow.filename, workflow.jobDescription, format, confirmedSkills);
+      const result = await rebuildResume(workflow.filename, workflow.jobDescription, format, confirmedSkills, selectedSummaryText, selectedBullets);
+      setExportResult({ key: selectionKey, details: result });
       setDownload({ href: apiUrl(result.download_url), label: result.filename });
       setNotice({ message: `${format.toUpperCase()} resume built successfully.`, tone: "success" });
     } catch (exc) {
@@ -155,7 +164,7 @@ export default function ResultsPage() {
       );
       setLatex(result);
       setLatexPreview(null);
-      setNotice({ message: "Jake's Resume LaTeX source generated successfully.", tone: "success" });
+      setNotice({ message: "LaTeX source generated with your resume's font styling.", tone: "success" });
     } catch (exc) {
       setNotice({ message: exc instanceof Error ? exc.message : "LaTeX generation failed.", tone: "error" });
     } finally {
@@ -176,9 +185,10 @@ export default function ResultsPage() {
         selectedBullets
       );
       setLatexPreview(result);
+      setExportResult({ key: selectionKey, details: result });
       setNotice({
         message: result.fallback
-          ? "PDF preview generated with the built-in renderer."
+          ? "Original PDF layout retained. Review the export notes below."
           : `LaTeX compiled with ${result.compiler}.`,
         tone: "success"
       });
@@ -203,6 +213,8 @@ export default function ResultsPage() {
   function invalidateLatex() {
     setLatex(null);
     setLatexPreview(null);
+    setDownload(null);
+    setExportResult(null);
   }
 
   function toggleSummarySelection() {
@@ -273,7 +285,30 @@ export default function ResultsPage() {
     window.setTimeout(() => setCopied(false), 1800);
   }
 
-  const ats = optimized?.ats || analysis?.ats;
+  const selectedBullets: BulletRewrite[] = useMemo(
+    () => (optimized?.optimization.improved_bullets || []).filter((item) => selectedBulletOriginals.includes(item.original)),
+    [optimized, selectedBulletOriginals]
+  );
+  const selectedSummaryText = selectedSummary ? optimized?.optimization.improved_summary || null : null;
+  const selectionCount = selectedBullets.length + (selectedSummaryText ? 1 : 0);
+  const selectionKey = JSON.stringify([workflow?.filename, workflow?.jobDescription, confirmedSkills, selectedSummaryText, selectedBullets]);
+  const currentScore = selectionScore?.key === selectionKey ? selectionScore : null;
+  const currentExport = exportResult?.key === selectionKey ? exportResult.details : null;
+  const baseline = currentScore?.baseline_ats || optimized?.baseline_ats || analysis?.ats;
+  const ats = currentExport?.ats || currentScore?.ats || baseline;
+  const scoreTitle = currentExport?.ats ? "Exported resume score" : currentScore ? (selectionCount || confirmedSkills.length ? "Selected changes · estimated score" : "Original resume score") : "Original score · recalculating";
+
+  useEffect(() => {
+    if (!workflow) return;
+    let active = true;
+    setScoreError("");
+    const timer = window.setTimeout(() => {
+      void scoreSelectedChanges(workflow.filename, workflow.jobDescription, confirmedSkills, selectedSummaryText, selectedBullets)
+        .then((result) => { if (active) setSelectionScore({ key: selectionKey, ...result }); })
+        .catch((exc) => { if (active) setScoreError(exc instanceof Error ? exc.message : "Score calculation failed."); });
+    }, 250);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [workflow, confirmedSkills, selectedSummaryText, selectedBullets, selectionKey]);
   const skillMatch = useMemo(() => {
     if (!ats?.jd_skills?.length) return ats?.score ?? 0;
     return Math.round(((ats.matched_keywords?.length || 0) / ats.jd_skills.length) * 100);
@@ -286,12 +321,6 @@ export default function ResultsPage() {
   const ragInsights = rag?.results?.length
     ? rag.results
     : optimized?.optimization.rag_guidance || [];
-  const selectedBullets: BulletRewrite[] = useMemo(
-    () => (optimized?.optimization.improved_bullets || []).filter((item) => selectedBulletOriginals.includes(item.original)),
-    [optimized, selectedBulletOriginals]
-  );
-  const selectedSummaryText = selectedSummary ? optimized?.optimization.improved_summary || null : null;
-  const selectionCount = selectedBullets.length + (selectedSummaryText ? 1 : 0);
 
   if (!hydrated) return <ResultsSkeleton />;
 
@@ -333,15 +362,17 @@ export default function ResultsPage() {
       <section className="grid gap-4 lg:grid-cols-[0.85fr_1.075fr_1.075fr]">
         <Card className="reveal-card">
           <CardContent className="grid min-h-72 place-items-center">
-            <ScoreGauge value={ats?.score ?? 0} label="Overall ATS score" />
+            <p className="mb-3 text-center text-xs font-semibold text-zinc-600" aria-live="polite">{scoreTitle}</p>
+            <ScoreGauge value={ats?.score ?? 0} label="ATS score" />
             <div className="mt-5 text-center">
               <p className="text-sm font-bold text-zinc-950">{scoreLabel(ats?.score ?? 0)}</p>
               <p className="mt-1 text-xs text-zinc-500">Overall resume and role alignment</p>
-              {optimized?.baseline_ats && optimized.baseline_ats.score !== optimized.ats.score ? (
+              {baseline ? (
                 <p className="mt-2 text-xs font-semibold text-emerald-700">
-                  Improved from {optimized.baseline_ats.score} after evidence-backed optimization
+                  Original: {baseline.score}/100 · {currentExport?.ats ? "Exported" : "Selected"}: {currentExport?.ats || currentScore ? `${ats?.score}/100` : "calculating"}. Scores are estimates from this app, not a hiring guarantee.
                 </p>
               ) : null}
+              {scoreError ? <p role="alert" className="mt-2 text-xs text-amber-700">Selected score unavailable: {scoreError}</p> : null}
             </div>
           </CardContent>
         </Card>
@@ -356,7 +387,7 @@ export default function ResultsPage() {
 
         <MetricCard icon={TriangleAlert} title="Missing skills" value={`${ats?.missing_keywords?.length || 0}`} copy="Select a skill only if you can demonstrate it in an interview. Confirmed skills are included in exports.">
           <div className="flex flex-wrap gap-2">
-            {(ats?.missing_keywords || []).slice(0, 12).map((skill) => (
+            {(baseline?.missing_keywords || []).slice(0, 12).map((skill) => (
               <button
                 type="button"
                 aria-pressed={confirmedSkills.includes(skill)}
@@ -618,7 +649,8 @@ export default function ResultsPage() {
           <Card>
             <CardHeader><CardTitle>Build and export resume</CardTitle></CardHeader>
             <CardContent className="space-y-3">
-              <p className="text-sm leading-6 text-zinc-600">DOCX and PDF keep the standard optimizer. LaTeX applies exactly the {selectionCount} approved change{selectionCount === 1 ? "" : "s"} above.</p>
+              <p className="text-sm leading-6 text-zinc-600">All exports use your {selectionCount} selected change{selectionCount === 1 ? "" : "s"}. PDF preserves the original layout, icons, fonts, and page count. LaTeX uses the compact layout with your content and font styling.</p>
+              <p className="text-xs leading-5 text-zinc-500">Changes that do not fit the original PDF stay unchanged and are listed below. Additional confirmed skills are included in LaTeX and DOCX.</p>
               <div className="grid gap-2 sm:grid-cols-3">
                 <Button variant="outline" onClick={() => rebuild("docx")} disabled={Boolean(loading)}>
                   {loading === "docx" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
@@ -640,6 +672,14 @@ export default function ResultsPage() {
                   Download {download.label}
                 </a>
               ) : null}
+              {currentExport ? (
+                <div role="status" className="space-y-2 rounded-xl bg-zinc-50 p-3 text-xs leading-5 text-zinc-700">
+                  {currentExport.page_count ? <p>{currentExport.page_count} page{currentExport.page_count === 1 ? "" : "s"} · original: {currentExport.original_page_count} · exported score: {currentExport.ats?.score}/100</p> : null}
+                  {currentExport.applied_changes !== undefined ? <p>{currentExport.applied_changes} text changes applied.</p> : null}
+                  {currentExport.warnings?.map((warning) => <p key={warning} className="text-amber-800">{warning}</p>)}
+                  {currentExport.skipped_changes?.map((item) => <p key={item.original}>Kept original: {item.original}</p>)}
+                </div>
+              ) : null}
             </CardContent>
           </Card>
         </div>
@@ -650,7 +690,7 @@ export default function ResultsPage() {
           <div className="flex flex-col justify-between gap-4 border-b border-zinc-200 bg-gradient-to-r from-zinc-950 to-indigo-950 p-4 text-white lg:flex-row lg:items-center">
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">Overleaf-style preview</p>
-              <h2 className="mt-1 truncate text-xl font-bold">Jake&apos;s Resume LaTeX</h2>
+              <h2 className="mt-1 truncate text-xl font-bold">Resume LaTeX</h2>
               <p className="mt-1 text-xs leading-5 text-zinc-400">{latex.applied_changes} approved change{latex.applied_changes === 1 ? "" : "s"} applied | {compilerStatus?.message || "Checking for a local LaTeX compiler..."}</p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -670,8 +710,8 @@ export default function ResultsPage() {
           <div className="grid min-w-0 lg:grid-cols-2">
             <div className="min-w-0 border-b border-zinc-200 lg:border-b-0 lg:border-r">
               <div className="flex items-center justify-between border-b border-zinc-100 px-4 py-3">
-                <p className="text-sm font-bold text-zinc-950">Source editor</p>
-                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">Editable .tex</span>
+                <p className="text-sm font-bold text-zinc-950">LaTeX source</p>
+                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[11px] font-bold text-indigo-700">Download to edit</span>
               </div>
               <pre className="h-[420px] max-w-full overflow-auto bg-zinc-950 p-4 text-xs leading-5 text-zinc-200 sm:h-[62vh]">
                 <code>{latex.latex_source}</code>
@@ -679,7 +719,7 @@ export default function ResultsPage() {
             </div>
             <div className="min-w-0 bg-zinc-50">
               <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
-                <p className="text-sm font-bold text-zinc-950">PDF preview</p>
+                <p className="text-sm font-bold text-zinc-950">{latexPreview?.fallback ? "Original layout preview" : "PDF preview"}</p>
                 {latexPreview ? (
                   <a className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-indigo-700 shadow-sm hover:text-indigo-900" href={apiUrl(latexPreview.download_url)} download>
                     Download PDF
@@ -693,7 +733,7 @@ export default function ResultsPage() {
                   <div className="max-w-sm rounded-2xl border border-indigo-100 bg-white p-6 shadow-sm">
                     <Eye className="mx-auto h-8 w-8 text-indigo-600" />
                     <p className="mt-4 text-sm font-bold text-zinc-950">Preview not generated yet</p>
-                    <p className="mt-2 text-xs leading-5 text-zinc-500">Click Preview PDF to compile locally with MiKTeX or render with the built-in fallback.</p>
+                    <p className="mt-2 text-xs leading-5 text-zinc-500">Compile LaTeX locally. If compilation fails or exceeds the original page count, the preview keeps your original PDF layout.</p>
                   </div>
                 </div>
               )}

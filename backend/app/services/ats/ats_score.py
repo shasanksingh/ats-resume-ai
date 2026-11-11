@@ -52,8 +52,8 @@ def calculate_ats_score(resume_text: str, jd_text: str) -> Dict:
 
     matched_keywords = sorted(set(resume_keywords).intersection(jd_keywords))
     missing_keywords = sorted(set(jd_keywords).difference(resume_keywords))
-    matched_terms = sorted(term for term in jd_terms if term in resume_text.lower())
-    missing_terms = sorted(term for term in jd_terms if term not in resume_text.lower())
+    matched_terms = sorted(term for term in jd_terms if term_in_text(term, resume_text.lower()) or term in matched_keywords)
+    missing_terms = sorted(set(jd_terms).difference(matched_terms))
 
     skill_score = ratio_score(len(matched_keywords), len(jd_keywords), empty_score=50)
     keyword_score = ratio_score(len(matched_terms), len(jd_terms), empty_score=50)

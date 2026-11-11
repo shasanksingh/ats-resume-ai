@@ -5,7 +5,7 @@ from typing import Dict, List
 from app.data.skills import SKILL_ALIASES
 from app.services.ats.ats_score import calculate_ats_score, extract_keywords, term_in_text
 from app.services.llm.llm_router import generate_resume_optimization
-from app.services.parser.resume_parser import extract_resume_data
+from app.services.parser.resume_parser import ACTION_VERBS, extract_resume_data
 
 
 ACTION_VERB_FALLBACKS = ["Built", "Designed", "Implemented", "Optimized", "Automated"]
@@ -91,7 +91,9 @@ def optimize_resume(
     ]
 
     weak_bullets = find_weak_bullets(structured)
-    rewritten = [rewrite_bullet(bullet, remaining_missing) for bullet in weak_bullets[:8]]
+    rewritten = [rewrite_bullet(bullet, remaining_missing) for bullet in weak_bullets]
+    rewritten.sort(key=lambda item: item["original"].rstrip(".") == item["improved"].rstrip("."))
+    rewritten = rewritten[:8]
     improved_summary = improve_summary(
         structured.get("summary", ""),
         baseline_ats["matched_keywords"],
@@ -109,7 +111,7 @@ def optimize_resume(
             "Employers, degrees, metrics, and tools are never invented.",
         ],
     }
-    projected_text = render_optimized_text(structured, optimization)
+    projected_text = project_selected_text(resume_text, structured, optimization, confirmed_keywords or [])
     projected_ats = calculate_ats_score(projected_text, jd_text)
 
     llm_hint = (
@@ -247,24 +249,53 @@ def render_optimized_text(structured: Dict, optimized: Dict) -> str:
         structured.get("name", ""),
         structured.get("email", ""),
         structured.get("phone", ""),
-        "Professional Summary",
-        optimized.get("improved_summary") or structured.get("summary", ""),
-        "Skills",
     ]
+    summary = optimized.get("improved_summary") or structured.get("summary", "")
+    if summary:
+        lines.extend(["Professional Summary", summary])
+    if structured.get("skill_groups") or structured.get("skills"):
+        lines.append("Skills")
     for label, values in (structured.get("skill_groups") or {}).items():
         lines.append(f"{label}: {', '.join(values)}")
-    lines.append("Experience")
+    if not structured.get("skill_groups"):
+        lines.append(", ".join(structured.get("skills", [])))
+    if structured.get("experience"):
+        lines.append("Experience")
     for item in structured.get("experience", []):
         lines.extend([item.get("company", ""), item.get("title", ""), item.get("dates", "")])
         lines.extend(f"- {rewrites.get(bullet, bullet)}" for bullet in item.get("bullets", []))
-    lines.append("Projects")
+    if structured.get("projects"):
+        lines.append("Projects")
     for item in structured.get("projects", []):
         lines.extend([item.get("name", ""), item.get("technologies", ""), item.get("date", "")])
         lines.extend(f"- {rewrites.get(bullet, bullet)}" for bullet in item.get("bullets", []))
-    lines.append("Education")
+        if not item.get("bullets") and item.get("description"):
+            lines.append(item["description"])
+    if structured.get("education_entries") or structured.get("education"):
+        lines.append("Education")
     for item in structured.get("education_entries", []):
         lines.extend(item.get(key, "") for key in ("institution", "degree", "details", "dates"))
+    if not structured.get("education_entries"):
+        lines.extend(structured.get("education", []))
+    if structured.get("certifications"):
+        lines.extend(["Certifications", *structured["certifications"]])
     return "\n".join(str(line) for line in lines if line)
+
+
+def project_selected_text(resume_text: str, structured: Dict, optimized: Dict, confirmed: List[str] | None = None) -> str:
+    """Score edits against source text so parsing cannot manufacture a gain."""
+    result = resume_text
+    changes = [(item["original"], item["improved"]) for item in optimized.get("improved_bullets", [])]
+    if optimized.get("improved_summary") and structured.get("summary"):
+        changes.append((structured["summary"], optimized["improved_summary"]))
+    for original, improved in changes:
+        pattern = r"\s+".join(re.escape(word) for word in original.split())
+        if pattern:
+            result = re.sub(pattern, lambda _: improved, result, count=1)
+    additions = [skill for skill in (confirmed or []) if not term_in_text(skill, result.lower())]
+    if additions:
+        result += "\nConfirmed skills: " + ", ".join(additions)
+    return result
 
 
 def unique_guidance(rag_context: str) -> List[str]:
@@ -288,7 +319,7 @@ def find_weak_bullets(structured: Dict) -> List[str]:
         bullets.extend(item.get("bullets", []))
 
     weak = []
-    opener_pattern = r"^(" + "|".join(ACTION_OPENERS) + r")\b"
+    opener_pattern = r"^(" + "|".join(ACTION_VERBS) + r")\b"
     for bullet in bullets:
         starts_with_action = bool(re.match(opener_pattern, bullet, re.I))
         has_metric = bool(re.search(r"\d+|%|\$|x\b", bullet, re.I))
@@ -301,15 +332,14 @@ def rewrite_bullet(bullet: str, missing_keywords: List[str]) -> Dict:
     del missing_keywords
     cleaned = bullet.strip(" •-–—\t.")
     improved = cleaned
-    opener_pattern = r"^(" + "|".join(ACTION_OPENERS) + r")\b"
-    if not re.match(opener_pattern, improved, re.I):
-        verb = next(
-            (candidate for candidate in ACTION_VERB_FALLBACKS if not improved.lower().startswith(candidate.lower())),
-            "Improved",
-        )
-        improved = f"{verb} {improved[0].lower() + improved[1:] if improved else 'project deliverables'}"
-
-    reason = "Strengthens the opening action verb and ATS readability without inventing facts."
+    verbs = {"developing": "Developed", "building": "Built", "managing": "Managed", "implementing": "Implemented", "designing": "Designed", "maintaining": "Maintained", "testing": "Tested", "automating": "Automated", "analyzing": "Analyzed", "deploying": "Deployed"}
+    for gerund, verb in verbs.items():
+        improved = re.sub(r"^(?:responsible for|worked on)\s+" + gerund + r"\b", verb, improved, flags=re.I)
+    for phrase, replacement in (("in order to", "to"), ("on a daily basis", "daily"), ("on a weekly basis", "weekly")):
+        improved = re.sub(r"\b" + phrase + r"\b", replacement, improved, flags=re.I)
+    improved += "." if bullet.endswith(".") else ""
+    reason = ("Removes wordiness while retaining the original facts, tools, and metrics."
+              if improved != bullet else "Already uses clear language; select for targeted AI refinement if needed.")
     if not re.search(r"\d+|%|\$|x\b", improved, re.I):
         reason += " Add a metric only when a truthful result is available."
 
@@ -321,19 +351,10 @@ def rewrite_bullet(bullet: str, missing_keywords: List[str]) -> Dict:
 
 
 def improve_summary(summary: str, matched_keywords: List[str]) -> str:
-    skills = matched_keywords[:5]
     base = summary.strip()
     if not base:
-        target = ", ".join(display_skill(skill) for skill in skills) or "role-relevant skills"
-        return f"Professional with hands-on experience in {target}, focused on reliable delivery and measurable outcomes."
-    novel_skills = [
-        display_skill(skill)
-        for skill in skills
-        if skill.lower() not in base.lower()
-    ]
-    if len(novel_skills) >= 2:
-        return f"{base} Core strengths include {', '.join(novel_skills[:4])}."
-    return base
+        return ""
+    return re.sub(r"\bin order to\b", "to", base, flags=re.I)
 
 
 def display_skill(skill: str) -> str:

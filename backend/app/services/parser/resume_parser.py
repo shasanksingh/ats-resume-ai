@@ -44,7 +44,9 @@ ACTION_VERBS = {
     "identified", "improved", "increased", "integrated", "launched", "led",
     "managed", "optimized", "participated", "performed", "reduced", "scaled",
     "shipped", "streamlined", "supported", "validated", "contributed",
-    "collaborated", "completed", "converted",
+    "collaborated", "completed", "converted", "engineered", "orchestrated",
+    "deployed", "trained", "recorded", "benchmarked", "modeled", "modelled",
+    "instrumented", "evaluated", "analyzed", "analysed", "resolved", "maintained",
 }
 
 BULLET_PREFIX_PATTERN = re.compile(
@@ -139,6 +141,7 @@ def extract_links_from_pdf(pdf_path: str) -> Dict[str, str]:
 
 def normalize_text(text: str) -> str:
     text = unicodedata.normalize("NFKC", text)
+    text = text.replace("\u00ad", "-")
     for broken, replacement in MOJIBAKE_REPLACEMENTS.items():
         text = text.replace(broken, replacement)
     text = text.replace("\u00a0", " ").replace("\u200b", "")
@@ -197,6 +200,9 @@ def detect_sections(text: str) -> Dict[str, str]:
         candidate = re.sub(r"^[\s|•●▪◦*\-–—]+|[\s|•●▪◦*\-–—]+$", "", line).strip()
         match = header_pattern.match(candidate)
         if match:
+            if current == "skills" and header_lookup[match.group(1).lower()] == "skills" and match.group(2):
+                sections[current].append(line)
+                continue
             current = header_lookup[match.group(1).lower()]
             sections.setdefault(current, [])
             inline_content = (match.group(2) or "").strip()
@@ -473,6 +479,11 @@ def normalize_section_lines(content: str) -> List[Dict[str, str]]:
             and (
                 cleaned[:1].islower()
                 or cleaned.startswith(("and ", "or ", "with ", "using ", "across ", "for "))
+                or (
+                    not lines[-1]["text"].endswith((".", "!", "?"))
+                    and not infer_dates(cleaned)
+                    and not looks_like_project_heading(cleaned)
+                )
             )
         ):
             lines[-1]["text"] = f"{lines[-1]['text']} {cleaned}"
@@ -539,10 +550,14 @@ def extract_dated_entries(content: str, section_type: str) -> List[Dict[str, obj
             if not bullets:
                 bullets = metadata_to_bullets(metadata)
             company, title = infer_experience_fields(heading, metadata)
+            location = next((item[len(title):].strip(" |,-") for item in metadata if item.startswith(title) and len(item) > len(title) and looks_like_location(item)), "")
+            if not location:
+                location = next((item for item in metadata if looks_like_location(item) and not JOB_TITLE_PATTERN.search(item)), "")
             entries.append(
                 {
                     "title": title,
                     "company": company,
+                    "location": location,
                     "dates": dates,
                     "bullets": bullets,
                 }
@@ -581,7 +596,8 @@ def infer_experience_fields(heading: str, metadata: List[str]) -> Tuple[str, str
     ] or ([heading] if heading else [])
     metadata_candidates = [
         item for item in metadata
-        if item and not infer_dates(item) and not looks_like_location(item)
+        if item and not infer_dates(item)
+        and (JOB_TITLE_PATTERN.search(item) or not looks_like_location(item))
     ]
 
     # A role immediately after a company/date row is the most common layout.
@@ -613,6 +629,7 @@ def infer_experience_fields(heading: str, metadata: List[str]) -> Tuple[str, str
         title = heading if heading and not company else (metadata_candidates[0] if metadata_candidates else "")
     if not company and heading and heading.casefold() != title.casefold():
         company = heading
+    title = re.split(r"\s+(?=Gurugram\b|Remote\b|Delhi\b|Bengaluru\b|Mumbai\b)", title, maxsplit=1, flags=re.I)[0]
     return company.strip(" |,-–—"), title.strip(" |,-–—")
 
 
@@ -712,7 +729,7 @@ def extract_undated_project_entries(content: str) -> List[Dict[str, object]]:
 def looks_like_project_heading(text: str) -> bool:
     cleaned = text.strip()
     words = cleaned.split()
-    if not 2 <= len(words) <= 9:
+    if not 1 <= len(words) <= 16:
         return False
     if looks_like_technology_line(cleaned) or is_date_line(cleaned):
         return False
@@ -726,8 +743,13 @@ def looks_like_technology_line(text: str) -> bool:
     cleaned = text.strip()
     if not cleaned:
         return False
-    if "," in cleaned or "|" in cleaned:
-        return True
+    if "," in cleaned:
+        parts = [part.strip() for part in re.split(r"[,|]", cleaned) if part.strip()]
+        return len(parts) > 1 and all(len(part.split()) <= 4 for part in parts)
+    if "|" in cleaned:
+        parts = [part.strip().lower() for part in cleaned.split("|") if part.strip()]
+        known = {skill.lower() for skill in TECH_SKILLS}
+        return len(parts) > 1 and all(part in known for part in parts)
     lower = cleaned.lower()
     tech_terms = (
         "python", "java", "javascript", "typescript", "react", "fastapi", "flask",

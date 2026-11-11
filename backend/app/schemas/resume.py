@@ -22,18 +22,12 @@ class OptimizeRequest(ApiModel):
     filename: str = Field(..., min_length=1, max_length=255)
     job_description: str = Field(..., min_length=1, max_length=50000)
     confirmed_keywords: List[str] = Field(default_factory=list, max_length=20)
+    use_ai: bool = False
 
 
 class RagSearchRequest(ApiModel):
     query: str = Field(..., min_length=1, max_length=5000)
     k: int = Field(default=4, ge=1, le=10)
-
-
-class RebuildRequest(ApiModel):
-    filename: str = Field(..., min_length=1, max_length=255)
-    job_description: str = Field(..., min_length=1, max_length=50000)
-    output_format: Literal["docx", "pdf"] = "docx"
-    confirmed_keywords: List[str] = Field(default_factory=list, max_length=20)
 
 
 class SelectedBullet(ApiModel):
@@ -49,6 +43,10 @@ class LatexRequest(ApiModel):
     confirmed_keywords: List[str] = Field(default_factory=list, max_length=20)
     selected_summary: Optional[str] = Field(default=None, max_length=4000)
     selected_bullets: List[SelectedBullet] = Field(default_factory=list, max_length=8)
+
+
+class RebuildRequest(LatexRequest):
+    output_format: Literal["docx", "pdf"] = "docx"
 
 
 class RefinementRequest(ApiModel):

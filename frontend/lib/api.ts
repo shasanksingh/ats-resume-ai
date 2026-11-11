@@ -110,6 +110,7 @@ export type OptimizationResponse = {
   optimization: {
     improved_summary: string;
     improved_bullets: BulletRewrite[];
+    refinement_provider?: string;
     keyword_suggestions: string[];
     keyword_decisions: {
       keyword: string;
@@ -165,7 +166,26 @@ export type LatexCompileResponse = {
   native_compiler?: boolean;
   fallback?: boolean;
   log_excerpt: string;
+} & ExportDetails;
+
+export type ExportDetails = {
+  ats?: AtsResult;
+  baseline_ats?: AtsResult;
+  score_basis?: string;
+  page_count?: number;
+  original_page_count?: number;
+  layout_preserved?: boolean;
+  applied_changes?: number;
+  warnings?: string[];
+  skipped_changes?: { original: string; reason: string }[];
 };
+
+export function scoreSelectedChanges(filename: string, jobDescription: string, confirmedKeywords: string[], selectedSummary: string | null, selectedBullets: BulletRewrite[]) {
+  return request<{ ats: AtsResult; baseline_ats: AtsResult }>("/optimize/score", {
+    method: "POST",
+    body: JSON.stringify({ filename, job_description: jobDescription, confirmed_keywords: confirmedKeywords, selected_summary: selectedSummary, selected_bullets: selectedBullets })
+  });
+}
 
 export type RagSearchResponse = {
   results: string[];
@@ -290,14 +310,14 @@ export function analyzeResume(filename: string, jobDescription: string) {
 export function optimizeResume(filename: string, jobDescription: string, confirmedKeywords: string[] = []) {
   return request<OptimizationResponse>("/optimize/resume", {
     method: "POST",
-    body: JSON.stringify({ filename, job_description: jobDescription, confirmed_keywords: confirmedKeywords })
+    body: JSON.stringify({ filename, job_description: jobDescription, confirmed_keywords: confirmedKeywords, use_ai: true })
   });
 }
 
-export function rebuildResume(filename: string, jobDescription: string, outputFormat: "docx" | "pdf", confirmedKeywords: string[] = []) {
-  return request<{ filename: string; path: string; download_url: string; format: string }>("/optimize/rebuild", {
+export function rebuildResume(filename: string, jobDescription: string, outputFormat: "docx" | "pdf", confirmedKeywords: string[] = [], selectedSummary: string | null = null, selectedBullets: BulletRewrite[] = []) {
+  return request<{ filename: string; path: string; download_url: string; format: string } & ExportDetails>("/optimize/rebuild", {
     method: "POST",
-    body: JSON.stringify({ filename, job_description: jobDescription, output_format: outputFormat, confirmed_keywords: confirmedKeywords })
+    body: JSON.stringify({ filename, job_description: jobDescription, output_format: outputFormat, confirmed_keywords: confirmedKeywords, selected_summary: selectedSummary, selected_bullets: selectedBullets })
   });
 }
 

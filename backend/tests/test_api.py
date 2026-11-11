@@ -260,6 +260,8 @@ class ApiContractTests(unittest.TestCase):
             "compiler": "pdfLaTeX",
             "log_excerpt": "compiled",
         }
+        (self.upload_dir / "optimized").mkdir(exist_ok=True)
+        (self.upload_dir / "optimized" / "resume_latex.pdf").write_bytes(self.pdf)
         with (
             patch("app.api.routes.optimize.search_rag", return_value=[]),
             patch("app.api.routes.optimize.compile_latex_source", return_value=compiled_result),
@@ -287,12 +289,30 @@ class ApiContractTests(unittest.TestCase):
                     fromlist=["LatexCompilerUnavailable"],
                 ).LatexCompilerUnavailable("compiler missing"),
             ),
-            patch("app.api.routes.optimize.render_latex_preview_pdf", return_value=fallback_result),
         ):
             fallback = self.client.post("/optimize/latex/compile", json=request)
         self.assertEqual(fallback.status_code, 200)
         self.assertTrue(fallback.json()["fallback"])
-        self.assertEqual(fallback.json()["compiler"], "Built-in PDF renderer")
+        self.assertEqual(fallback.json()["compiler"], "Original PDF layout")
+        self.assertTrue(fallback.json()["layout_preserved"])
+        self.assertEqual(fallback.json()["page_count"], 1)
+        self.assertEqual(fallback.json()["ats"]["score"], fallback.json()["baseline_ats"]["score"])
+
+    def test_automatic_ai_optimization_is_explicit_and_handles_provider_failure(self):
+        uploaded = self.upload().json()
+        request = {"filename": uploaded["filename"], "job_description": "Python FastAPI engineer", "use_ai": True}
+        original = "Built FastAPI services that improved response time by 35%."
+        refined = {"summary": None, "bullets": [{"original": original, "improved": original, "reason": "Evidence retained"}], "provider": "test-nvidia"}
+        with patch("app.api.routes.optimize.search_rag", return_value=[]), patch("app.api.routes.optimize.refine_selected_changes", return_value=refined) as ai:
+            response = self.client.post("/optimize/resume", json=request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["optimization"]["refinement_provider"], "test-nvidia")
+        ai.assert_called_once()
+        from app.services.llm.nvidia_mistral_service import NvidiaServiceError
+        with patch("app.api.routes.optimize.search_rag", return_value=[]), patch("app.api.routes.optimize.refine_selected_changes", side_effect=NvidiaServiceError("test provider unavailable")):
+            response = self.client.post("/optimize/resume", json=request)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(any("NVIDIA optimization unavailable" in warning for warning in response.json()["optimization"]["warnings"]))
 
     def test_selected_changes_are_the_only_changes_applied_to_latex(self):
         uploaded = self.upload().json()

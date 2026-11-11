@@ -60,8 +60,9 @@ def build_docx(path: Path, structured: Dict, optimized: Dict) -> None:
     section.right_margin = Inches(0.5)
 
     normal = document.styles["Normal"]
-    normal.font.name = "Arial"
-    normal.font.size = Pt(9)
+    profile = structured.get("document_profile", {})
+    normal.font.name = "Times New Roman" if profile.get("font_family") == "serif" else "Arial"
+    normal.font.size = Pt(profile.get("body_font_size", 9))
     normal.paragraph_format.space_after = Pt(1.5)
 
     heading = document.add_paragraph()
@@ -136,6 +137,7 @@ def add_docx_experience(document, structured: Dict, optimized: Dict) -> None:
             role.get("company") or role.get("title") or "",
             role.get("dates") or "",
             role.get("title") or "",
+            role.get("location") or "",
         )
         for bullet in role.get("bullets", []):
             document.add_paragraph(rewrites.get(bullet, bullet), style="List Bullet")
@@ -156,6 +158,8 @@ def add_docx_projects(document, structured: Dict, optimized: Dict) -> None:
         )
         for bullet in project.get("bullets", []):
             document.add_paragraph(rewrites.get(bullet, bullet), style="List Bullet")
+        if not project.get("bullets") and project.get("description"):
+            document.add_paragraph(project["description"])
 
 
 def add_docx_education(document, structured: Dict) -> None:

@@ -3,11 +3,7 @@ from fastapi import APIRouter, HTTPException
 from app.core.files import resolve_uploaded_pdf
 from app.schemas.resume import AnalyzeRequest
 from app.services.ats.ats_score import calculate_ats_score
-from app.services.parser.resume_parser import (
-    extract_links_from_pdf,
-    extract_resume_data,
-    extract_text_from_pdf,
-)
+from app.services.parser.document_profile import load_pdf_resume
 
 router = APIRouter(prefix="/analyze", tags=["Analyze"])
 
@@ -16,17 +12,12 @@ router = APIRouter(prefix="/analyze", tags=["Analyze"])
 def analyze_resume(payload: AnalyzeRequest):
     try:
         pdf_path = resolve_uploaded_pdf(payload.filename)
-        extracted_text = extract_text_from_pdf(str(pdf_path))
+        extracted_text, structured_resume = load_pdf_resume(pdf_path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    structured_resume = extract_resume_data(extracted_text)
-    structured_resume["links"] = {
-        **structured_resume.get("links", {}),
-        **extract_links_from_pdf(str(pdf_path)),
-    }
     response = {
         "filename": payload.filename,
         "resume_data": structured_resume,

@@ -7,6 +7,7 @@ from threading import Lock
 from typing import Dict, List
 
 import requests
+from app.services.ats.ats_score import extract_keywords
 
 from app.core.config import (
     NVIDIA_API_KEY,
@@ -73,6 +74,9 @@ def refine_selected_changes(
         "Keep every statement concise, ATS-readable, and truthful. Never invent employers, "
         "degrees, certifications, tools, responsibilities, dates, or numeric results. "
         "Do not add a metric unless it already appears in the supplied content.\n\n"
+        "Preserve every supplied fact, named tool, number, date, and achievement. "
+        "Use role wording only when supported by the original. Keep each rewrite no longer than "
+        "the original to fit the existing resume page. Remove filler, not evidence.\n\n"
         f"INPUT:\n{json.dumps(request_data, ensure_ascii=False)}"
     )
     payload = {
@@ -159,6 +163,8 @@ def normalize_refinement(parsed: Dict, summary: str | None, bullets: List[Dict[s
     refined_summary = parsed.get("summary") if summary else None
     if summary and (not isinstance(refined_summary, str) or not refined_summary.strip()):
         refined_summary = summary
+    if summary and (len(refined_summary) > 4000 or not preserves_evidence(summary, refined_summary)):
+        refined_summary = summary
 
     returned_bullets = parsed.get("bullets") if isinstance(parsed.get("bullets"), list) else []
     normalized_bullets = []
@@ -168,6 +174,10 @@ def normalize_refinement(parsed: Dict, summary: str | None, bullets: List[Dict[s
             candidate = {}
         improved = str(candidate.get("improved") or source.get("improved") or "").strip()
         reason = str(candidate.get("reason") or "Refined from the selected suggestion.").strip()
+        original = source.get("original", "")
+        if len(improved) > 2000 or not preserves_evidence(original, improved):
+            improved = original
+            reason = "Original retained because the AI rewrite changed a number or named skill, or exceeded the text limit."
         normalized_bullets.append({
             "original": source.get("original", ""),
             "improved": improved[:2000],
@@ -178,6 +188,11 @@ def normalize_refinement(parsed: Dict, summary: str | None, bullets: List[Dict[s
         "summary": str(refined_summary).strip()[:4000] if refined_summary else None,
         "bullets": normalized_bullets,
     }
+
+
+def preserves_evidence(original: str, improved: str) -> bool:
+    numbers = lambda value: {number.replace(",", "") for number in re.findall(r"\d+(?:[.,]\d+)*(?:%|\+)?", value)}
+    return numbers(original) == numbers(improved) and set(extract_keywords(original)) == set(extract_keywords(improved))
 
 
 def get_cached(key: str) -> Dict | None:

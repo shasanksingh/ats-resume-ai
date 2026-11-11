@@ -1,10 +1,12 @@
 import shutil
+import os
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Dict
+import fitz
 
-from app.services.rebuilder.latex_resume import OUTPUT_DIR
+from app.services.rebuilder.latex_resume import OUTPUT_DIR, unique_output_path
 
 
 class LatexCompilerUnavailable(RuntimeError):
@@ -20,9 +22,9 @@ def compiler_status() -> Dict:
     if not compiler:
         return {
             "available": True,
-            "compiler": "Built-in PDF renderer",
+            "compiler": "Original PDF layout",
             "native_compiler": False,
-            "message": "PDF preview is ready. Install MiKTeX, TeX Live, or Tectonic only if you need exact LaTeX compilation.",
+            "message": "Original-layout PDF preview is ready. Install MiKTeX, TeX Live, or Tectonic for native LaTeX compilation.",
         }
     return {
         "available": True,
@@ -32,15 +34,21 @@ def compiler_status() -> Dict:
     }
 
 
-def compile_latex_source(source: str, basename: str) -> Dict:
+def compile_latex_source(source: str, basename: str, max_pages: int | None = None) -> Dict:
     compiler = find_latex_compiler()
     if not compiler:
         raise LatexCompilerUnavailable(
-            "Native LaTeX compiler not found; rendered with the built-in PDF preview engine."
+            "Native LaTeX compiler not found; the original PDF layout is retained."
         )
 
-    output_name = f"{Path(basename).stem}_latex.pdf"
-    with tempfile.TemporaryDirectory(prefix="ats-latex-") as temp:
+    destination = unique_output_path(f"{Path(basename).stem}_latex", "pdf")
+    output_name = destination.name
+    runtime = Path(__file__).resolve().parents[4] / ".local"
+    runtime.mkdir(exist_ok=True)
+    cache = runtime / "tectonic-cache"
+    cache.mkdir(exist_ok=True)
+    environment = {**os.environ, "TECTONIC_CACHE_DIR": str(cache), "XDG_CACHE_HOME": str(cache)}
+    with tempfile.TemporaryDirectory(prefix="ats-latex-", dir=runtime) as temp:
         temp_dir = Path(temp)
         tex_path = temp_dir / "resume.tex"
         tex_path.write_text(source, encoding="utf-8")
@@ -55,6 +63,7 @@ def compile_latex_source(source: str, basename: str) -> Dict:
                 errors="replace",
                 timeout=240,
                 check=False,
+                env=environment,
             )
         except subprocess.TimeoutExpired as exc:
             raise LatexCompilationError("LaTeX compilation exceeded the 240-second limit.") from exc
@@ -65,8 +74,12 @@ def compile_latex_source(source: str, basename: str) -> Dict:
             detail = log[-1800:] if log else "The compiler did not produce a PDF."
             raise LatexCompilationError(f"LaTeX compilation failed: {detail}")
 
+        with fitz.open(pdf_path) as pdf:
+            page_count = len(pdf)
+        if max_pages and page_count > max_pages:
+            raise LatexCompilationError(f"LaTeX needs {page_count} pages; the original has {max_pages}. Original layout retained to preserve all content and font sizes.")
+
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        destination = OUTPUT_DIR / output_name
         shutil.copy2(pdf_path, destination)
 
     return {
@@ -78,6 +91,8 @@ def compile_latex_source(source: str, basename: str) -> Dict:
         "native_compiler": True,
         "fallback": False,
         "log_excerpt": log[-600:],
+        "page_count": page_count,
+        "original_page_count": max_pages,
     }
 
 
@@ -105,6 +120,9 @@ def render_latex_preview_pdf(
 
 
 def find_latex_compiler() -> Dict | None:
+    portable = Path(__file__).resolve().parents[4] / ".local/tectonic/tectonic.exe"
+    if portable.is_file():
+        return {"name": "Tectonic", "path": str(portable), "executable": "tectonic"}
     candidates = [
         ("Tectonic", "tectonic"),
         ("pdfLaTeX", "pdflatex"),

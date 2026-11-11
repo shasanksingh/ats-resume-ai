@@ -1,16 +1,16 @@
 # ATS Resume Studio
 
-ATS Resume Studio is a local-first resume analysis and optimization platform for ATS-focused job applications. It uploads a PDF resume, compares it with a target job description, explains the match score, recommends truthful improvements, and exports optimized DOCX, PDF, and Jake's Resume LaTeX output. Optional NVIDIA Mistral refinement can edit only the changes a user explicitly selects.
+ATS Resume Studio analyzes a PDF resume against a target job description, explains the match score, and uses NVIDIA Mistral to suggest stronger wording. Users select which changes to apply before exporting PDF, DOCX, or compact LaTeX output.
 
-The core analysis and deterministic optimizer do not require a paid AI service. Optional prompt-based refinement uses an NVIDIA API key configured only on the backend.
+Core analysis and local suggestions work without an AI service. Automatic optimization and custom refinement use an NVIDIA API key configured only on the backend.
 
 ## Features
 
 - PDF resume upload with validation, drag/drop support, and progress feedback.
 - Layout-aware resume parsing for contact details, location, skills, experience, projects, education, links, and varied section headings.
 - Extraction confidence, detected-section diagnostics, and actionable parsing warnings in the analysis dashboard.
-- Per-change approval for optimized summaries and bullets before LaTeX generation.
-- Prompt-based refinement of selected changes through NVIDIA Mistral, with short payloads and response caching.
+- Per-change approval for summaries and bullets across PDF, DOCX, and LaTeX exports.
+- The Optimize resume button uses NVIDIA Mistral for stronger suggestions. Selected changes can also be refined with a custom instruction. Resume excerpts and the job description are sent to NVIDIA; the key stays on the backend. Local suggestions remain available if NVIDIA fails.
 - Automatic deletion of uploaded PDFs and generated resume files after 24 hours.
 - ATS score generation with category breakdown and explainable scoring evidence.
 - Job-description matching with matched skills, missing skills, and keyword coverage.
@@ -27,7 +27,7 @@ The core analysis and deterministic optimizer do not require a paid AI service. 
 - Backend: FastAPI, Pydantic, PyMuPDF, python-docx, ReportLab.
 - Local retrieval: LangChain, ChromaDB, sentence-transformer embeddings.
 - Storage: local filesystem uploads plus optional SQLite account database.
-- LaTeX preview: MiKTeX, TeX Live, or Tectonic when installed; built-in PDF fallback otherwise.
+- LaTeX preview: MiKTeX, TeX Live, or Tectonic when installed; original-layout PDF fallback otherwise.
 
 ## Project Structure
 
@@ -178,7 +178,7 @@ Feedback submitted from the results page is stored in the same SQLite database w
 
 ## LaTeX Preview
 
-The results page generates Jake's Resume LaTeX source and can preview it beside the source editor.
+The results page generates compact LaTeX source using the uploaded resume's font family, sizes, bold emphasis, and section order. It retains separate projects, contact icons, links, and source data. The source can be downloaded or compiled beside its preview.
 
 For native compilation, install one of:
 
@@ -186,7 +186,11 @@ For native compilation, install one of:
 - TeX Live
 - Tectonic
 
-If no local compiler is available, the app uses a built-in PDF fallback so users can still preview and download a PDF.
+On the restored Windows setup, the portable compiler is at `.local/tectonic/tectonic.exe`; its downloaded packages stay in `.local/tectonic-cache` on D:. These local installations are not committed.
+
+PDF export edits the original document at its original font size. If a rewrite does not fit or its font cannot render it faithfully, the original text remains and the UI lists the skipped edit. LaTeX compilation checks page count and content retention; if it fails those checks or no compiler is available, the preview uses the original PDF layout. A one-page input is never returned as a two-page PDF. DOCX pagination depends on the word processor.
+
+The score card distinguishes the original score, an estimate for selected changes, and the score extracted from the exported document. Deselecting or refining changes recalculates the estimate; unselected suggestions do not improve it. Additional confirmed skills are included in the LaTeX and DOCX layouts, while original-layout PDF export retains the existing skills section.
 
 ## Workflow
 

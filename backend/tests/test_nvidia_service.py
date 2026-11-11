@@ -45,3 +45,17 @@ class NvidiaServiceTests(unittest.TestCase):
             with self.assertRaises(service.NvidiaServiceError) as caught:
                 service.refine_selected_changes("Shorten", "Engineer", "Built APIs.", [])
         self.assertEqual(str(caught.exception), "NVIDIA refinement request failed (401).")
+
+    def test_refinement_cannot_drop_metrics_or_add_unsupported_tools(self):
+        original = "Developed Python APIs used by 120 teams."
+        for rewrite in ("Developed Python APIs.", "Developed Python and AWS APIs used by 120 teams.", "Developed Python APIs used by 150 teams."):
+            result = service.normalize_refinement({"bullets": [{"improved": rewrite}]}, None,
+                [{"original": original, "improved": original}])
+            self.assertEqual(result["bullets"][0]["improved"], original)
+            self.assertIn("Original retained", result["bullets"][0]["reason"])
+
+    def test_supported_rewording_keeps_evidence(self):
+        self.assertTrue(service.preserves_evidence(
+            "Responsible for developing Python APIs used by 120 teams.",
+            "Developed Python APIs used by 120 teams.",
+        ))
