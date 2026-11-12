@@ -105,8 +105,9 @@ UPLOAD_RETENTION_HOURS=24
 CLEANUP_INTERVAL_SECONDS=3600
 NVIDIA_API_KEY=replace-with-your-nvidia-api-key
 NVIDIA_MODEL=mistralai/mistral-large-4-1t-a52b
+NVIDIA_FALLBACK_MODEL=nvidia/nemotron-3.5-super-vl-120b-a12b
 NVIDIA_TIMEOUT_SECONDS=120
-NVIDIA_MAX_TOKENS=1200
+NVIDIA_MAX_TOKENS=4096
 ```
 
 ## Frontend Setup
@@ -178,7 +179,11 @@ Feedback submitted from the results page is stored in the same SQLite database w
 
 ## LaTeX Preview
 
-The results page generates compact LaTeX source using the uploaded resume's font family, sizes, bold emphasis, and section order. It retains separate projects, contact icons, links, and source data. The source can be downloaded or compiled beside its preview.
+The results page generates LaTeX source using the uploaded resume's page size, margins, font family, sizes, bold emphasis, and section order. It retains separate projects, contact icons, links, and source data. For one-page inputs, compilation measures content height and adjusts line and section spacing within bounded limits to use the page without changing font sizes or dropping content. The downloadable source is updated to match the compiled preview. Sparse resumes keep reasonable spacing rather than stretching indefinitely.
+
+Feedback appears beneath the results only after a PDF preview is generated successfully, once per uploaded resume after submission (or once per browser session after dismissal). Optimization reports NVIDIA failures explicitly, labels unchanged suggestions as retained originals without duplicating them as rewrites, and recalculates scores only for selected or exported content.
+
+AI rewrites run in batches of two bullets (up to four concurrent requests). The primary model gets at most 45 seconds before NVIDIA Nemotron Super is tried with reasoning disabled within the same total timeout. The key and both models remain on the backend. Empty, truncated, or incomplete responses are treated as failures; authentication errors are reported directly. Set `NVIDIA_FALLBACK_MODEL` to an empty value to disable the fallback.
 
 For native compilation, install one of:
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { MessageSquareHeart, Send, Star, X } from "lucide-react";
-import { FEEDBACK_SUBMITTED_STORAGE_KEY, submitFeedback } from "@/lib/api";
+import { FEEDBACK_SUBMITTED_STORAGE_KEY, LATEX_PREVIEW_READY_EVENT, submitFeedback } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
 export function FeedbackPrompt() {
@@ -14,15 +14,32 @@ export function FeedbackPrompt() {
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [resumeKey, setResumeKey] = useState("");
 
   useEffect(() => {
     if (pathname !== "/results") {
       setVisible(false);
       return;
     }
-    if (localStorage.getItem(FEEDBACK_SUBMITTED_STORAGE_KEY) === "1") return;
-    const timer = window.setTimeout(() => setVisible(true), 1800);
-    return () => window.clearTimeout(timer);
+    let timer: number | undefined;
+    const onPreviewReady = (event: Event) => {
+      const filename = (event as CustomEvent<{ filename: string }>).detail?.filename;
+      if (!filename) return;
+      const key = `${FEEDBACK_SUBMITTED_STORAGE_KEY}:${filename}`;
+      if (localStorage.getItem(key) === "1" || sessionStorage.getItem(`${key}:dismissed`) === "1") return;
+      window.clearTimeout(timer);
+      setResumeKey(key);
+      setSaved(false);
+      setError("");
+      setMessage("");
+      setRating(5);
+      timer = window.setTimeout(() => setVisible(true), 1200);
+    };
+    window.addEventListener(LATEX_PREVIEW_READY_EVENT, onPreviewReady);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener(LATEX_PREVIEW_READY_EVENT, onPreviewReady);
+    };
   }, [pathname]);
 
   if (!visible) return null;
@@ -32,7 +49,7 @@ export function FeedbackPrompt() {
     setError("");
     try {
       await submitFeedback(rating, message, pathname);
-      localStorage.setItem(FEEDBACK_SUBMITTED_STORAGE_KEY, "1");
+      localStorage.setItem(resumeKey, "1");
       setSaved(true);
       window.setTimeout(() => setVisible(false), 1200);
     } catch (exc) {
@@ -43,18 +60,19 @@ export function FeedbackPrompt() {
   }
 
   function close() {
+    if (resumeKey) sessionStorage.setItem(`${resumeKey}:dismissed`, "1");
     setVisible(false);
   }
 
   return (
-    <div className="fixed inset-x-3 bottom-3 z-50 mx-auto max-w-md rounded-3xl border border-zinc-200 bg-white p-4 shadow-2xl shadow-zinc-950/15 sm:bottom-5 sm:right-5 sm:mx-0" role="dialog" aria-label="Feedback">
+    <div className="mx-4 mb-10 max-w-2xl rounded-3xl border border-zinc-200 bg-white p-5 shadow-lg sm:mx-auto sm:p-6" role="region" aria-label="Feedback">
       <div className="flex items-start justify-between gap-3">
         <div className="flex gap-3">
           <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-indigo-50 text-indigo-700">
             <MessageSquareHeart className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-sm font-black text-zinc-950">How was your resume review?</p>
+            <p className="text-sm font-black text-zinc-950">How was your generated resume?</p>
             <p className="mt-1 text-xs leading-5 text-zinc-500">Your feedback is stored locally with this workspace.</p>
           </div>
         </div>

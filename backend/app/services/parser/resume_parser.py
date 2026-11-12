@@ -629,7 +629,6 @@ def infer_experience_fields(heading: str, metadata: List[str]) -> Tuple[str, str
         title = heading if heading and not company else (metadata_candidates[0] if metadata_candidates else "")
     if not company and heading and heading.casefold() != title.casefold():
         company = heading
-    title = re.split(r"\s+(?=Gurugram\b|Remote\b|Delhi\b|Bengaluru\b|Mumbai\b)", title, maxsplit=1, flags=re.I)[0]
     return company.strip(" |,-–—"), title.strip(" |,-–—")
 
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { CheckCircle2, CircleAlert, X } from "lucide-react";
+import { useEffect, useRef } from "react";
 
 type ToastProps = {
   message: string;
@@ -9,6 +10,12 @@ type ToastProps = {
 };
 
 export function Toast({ message, tone = "success", onClose }: ToastProps) {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const timer = window.setTimeout(() => closeRef.current(), tone === "error" ? 10000 : 5000);
+    return () => window.clearTimeout(timer);
+  }, [message, tone]);
   const Icon = tone === "success" ? CheckCircle2 : CircleAlert;
   const iconTone = tone === "success" ? "text-emerald-600" : tone === "error" ? "text-red-600" : "text-indigo-600";
 

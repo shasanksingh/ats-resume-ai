@@ -3,6 +3,7 @@ export const SESSION_STORAGE_KEY = "ats-session";
 export const AUTH_SKIP_STORAGE_KEY = "ats-auth-skip";
 export const VISITOR_ID_STORAGE_KEY = "ats-visitor-id";
 export const FEEDBACK_SUBMITTED_STORAGE_KEY = "ats-feedback-submitted";
+export const LATEX_PREVIEW_READY_EVENT = "ats:latex-preview-ready";
 
 export type WorkflowState = {
   filename: string;
@@ -104,6 +105,8 @@ export type AnalysisResponse = {
 };
 
 export type OptimizationResponse = {
+  filename?: string;
+  optimization_version?: number;
   structured_resume: ResumeData;
   baseline_ats: AtsResult;
   ats: AtsResult;
@@ -111,6 +114,9 @@ export type OptimizationResponse = {
     improved_summary: string;
     improved_bullets: BulletRewrite[];
     refinement_provider?: string;
+    ai_status?: "success" | "partial" | "fallback" | "not_requested";
+    ai_message?: string;
+    changed_count?: number;
     keyword_suggestions: string[];
     keyword_decisions: {
       keyword: string;
@@ -158,6 +164,9 @@ export type LatexCompilerStatus = {
 };
 
 export type LatexCompileResponse = {
+  latex_source?: string;
+  source_filename?: string;
+  source_download_url?: string;
   filename: string;
   path: string;
   download_url: string;

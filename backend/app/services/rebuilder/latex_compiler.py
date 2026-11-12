@@ -2,6 +2,8 @@ import shutil
 import os
 import subprocess
 import tempfile
+import re
+import time
 from pathlib import Path
 from typing import Dict
 import fitz
@@ -51,36 +53,48 @@ def compile_latex_source(source: str, basename: str, max_pages: int | None = Non
     with tempfile.TemporaryDirectory(prefix="ats-latex-", dir=runtime) as temp:
         temp_dir = Path(temp)
         tex_path = temp_dir / "resume.tex"
-        tex_path.write_text(source, encoding="utf-8")
         command = build_command(compiler, tex_path, temp_dir)
-        try:
-            result = subprocess.run(
-                command,
-                cwd=temp_dir,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=240,
-                check=False,
-                env=environment,
-            )
-        except subprocess.TimeoutExpired as exc:
-            raise LatexCompilationError("LaTeX compilation exceeded the 240-second limit.") from exc
-
         pdf_path = temp_dir / "resume.pdf"
-        log = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
-        if result.returncode != 0 or not pdf_path.is_file():
-            detail = log[-1800:] if log else "The compiler did not produce a PDF."
-            raise LatexCompilationError(f"LaTeX compilation failed: {detail}")
-
-        with fitz.open(pdf_path) as pdf:
-            page_count = len(pdf)
-        if max_pages and page_count > max_pages:
+        adaptive = source.startswith("% ATS_ADAPTIVE_LAYOUT") and max_pages == 1
+        scale, lower, upper = 1.0, 0.90, 1.55
+        best = None
+        deadline = time.monotonic() + 120
+        for attempt in range(4 if adaptive else 1):
+            candidate = space_latex(source, scale) if adaptive else source
+            tex_path.write_text(candidate, encoding="utf-8")
+            try:
+                result = subprocess.run(command, cwd=temp_dir, capture_output=True, text=True,
+                    encoding="utf-8", errors="replace", timeout=max(1, deadline - time.monotonic()), check=False, env=environment)
+            except subprocess.TimeoutExpired as exc:
+                raise LatexCompilationError("LaTeX compilation exceeded the 120-second limit.") from exc
+            log = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
+            if result.returncode != 0 or not pdf_path.is_file():
+                detail = log[-1800:] if log else "The compiler did not produce a PDF."
+                raise LatexCompilationError(f"LaTeX compilation failed: {detail}")
+            with fitz.open(pdf_path) as pdf:
+                page_count = len(pdf)
+                bounds = [line["bbox"] for block in pdf[0].get_text("dict")["blocks"] for line in block.get("lines", [])]
+                bottom = max((box[3] for box in bounds), default=0)
+                target = pdf[0].rect.height - 24
+            if not max_pages or page_count <= max_pages:
+                if best is None or bottom > best[0]:
+                    best = (bottom, pdf_path.read_bytes(), candidate, page_count, log)
+                if not adaptive or bottom >= target - 8 or scale >= upper - .01:
+                    break
+                lower = scale
+                scale = min(upper, scale * target / max(bottom, 1))
+            else:
+                if not adaptive:
+                    break
+                upper = scale
+                scale = (lower + upper) / 2 if best else lower
+        if best is None:
             raise LatexCompilationError(f"LaTeX needs {page_count} pages; the original has {max_pages}. Original layout retained to preserve all content and font sizes.")
-
+        _, pdf_bytes, source, page_count, log = best
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(pdf_path, destination)
+        destination.write_bytes(pdf_bytes)
+        source_path = destination.with_suffix(".tex")
+        source_path.write_text(source, encoding="utf-8")
 
     return {
         "filename": output_name,
@@ -93,7 +107,18 @@ def compile_latex_source(source: str, basename: str, max_pages: int | None = Non
         "log_excerpt": log[-600:],
         "page_count": page_count,
         "original_page_count": max_pages,
+        "latex_source": source,
+        "source_filename": source_path.name,
+        "source_download_url": f"/files/optimized/{source_path.name}",
     }
+
+
+def space_latex(source: str, scale: float) -> str:
+    """Fit spacing to measured content without changing fonts or removing text."""
+    source = re.sub(r"\\fontsize\{([\d.]+)\}\{([\d.]+)\}",
+        lambda m: rf"\fontsize{{{m[1]}}}{{{max(float(m[1]) * 1.02, float(m[2]) * scale):.2f}}}", source)
+    return source.replace(r"\titlespacing*{\section}{0pt}{4pt}{2pt}",
+        rf"\titlespacing*{{\section}}{{0pt}}{{{4 * scale:.2f}pt}}{{{2 * scale:.2f}pt}}")
 
 
 def render_latex_preview_pdf(

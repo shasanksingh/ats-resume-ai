@@ -45,25 +45,38 @@ def optimize_resume_route(payload: OptimizeRequest):
         confirmed_keywords=payload.confirmed_keywords,
         include_local_model=not payload.use_ai,
     )
+    result["filename"] = payload.filename
+    result["optimization_version"] = 2
+    result["optimization"]["ai_status"] = "not_requested"
     if payload.use_ai:
         optimization = result["optimization"]
         try:
             refinement = refine_selected_changes(
-                "Optimize for this job using supported experience only. Make statements concise and specific. "
-                "Retain every tool, metric, and achievement. Replace filler and weak openings. "
-                "Keep each rewrite within its original length; do not add unsupported keywords.",
+                "Rewrite each bullet for clarity, concision and relevance to this job. Reorganize clauses "
+                "to connect the work to its purpose, rather than just repeating the original. "
+                "Retain every tool, metric and achievement. Do not invent outcomes or unsupported keywords.",
                 payload.job_description, structured.get("summary") or None,
                 optimization["improved_bullets"],
             )
             optimization["improved_summary"] = refinement["summary"] or optimization["improved_summary"]
             optimization["improved_bullets"] = refinement["bullets"]
             optimization["refinement_provider"] = refinement["provider"]
+            if refinement.get("provider_fallback"):
+                optimization["warnings"].append("NVIDIA's primary model was unavailable or incomplete; its fast fallback model completed the review.")
+            optimization["ai_status"] = "success"
+            if refinement.get("warnings"):
+                optimization["warnings"].extend(refinement["warnings"])
+                optimization["ai_status"] = "partial"
+            optimization["ai_message"] = "NVIDIA reviewed the selected resume content. Review the suggested changes before exporting."
             result["ats"] = calculate_ats_score(
                 project_selected_text(resume_text, structured, optimization, payload.confirmed_keywords),
                 payload.job_description,
             )
         except NvidiaServiceError as exc:
+            optimization["ai_status"] = "fallback"
+            optimization["ai_message"] = str(exc)
             optimization["warnings"].append(f"NVIDIA optimization unavailable: {exc} Local suggestions are available.")
+    result["optimization"]["changed_count"] = sum(item["original"].strip() != item["improved"].strip() for item in result["optimization"]["improved_bullets"]) + int(bool(result["optimization"]["improved_summary"] and result["optimization"]["improved_summary"].strip() != structured.get("summary", "").strip()))
     if rag_warning:
         result["optimization"]["warnings"].append(rag_warning)
     return result

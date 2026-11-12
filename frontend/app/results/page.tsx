@@ -27,6 +27,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   AnalysisResponse,
+  LATEX_PREVIEW_READY_EVENT,
   AtsResult,
   ExportDetails,
   scoreSelectedChanges,
@@ -85,8 +86,13 @@ export default function ResultsPage() {
   useEffect(() => {
     const savedWorkflow = readActiveWorkflow();
     setWorkflow(savedWorkflow);
-    setAnalysis(readStoredJson<AnalysisResponse>("ats-analysis"));
-    setOptimized(readStoredJson<OptimizationResponse>("ats-optimized"));
+    const savedAnalysis = readStoredJson<AnalysisResponse>("ats-analysis");
+    const savedOptimization = readStoredJson<OptimizationResponse>("ats-optimized");
+    setAnalysis(savedAnalysis?.filename === savedWorkflow?.filename ? savedAnalysis : null);
+    setOptimized(savedOptimization?.filename === savedWorkflow?.filename && savedOptimization?.optimization_version === 2 ? savedOptimization : null);
+    if (savedOptimization && savedOptimization.filename === savedWorkflow?.filename && savedOptimization.optimization_version !== 2) {
+      setNotice({ message: "Optimization has been updated. Run Optimize resume to generate fresh rewrites.", tone: "info" });
+    }
     setHydrated(true);
     void getLatexCompilerStatus()
       .then(setCompilerStatus)
@@ -126,7 +132,7 @@ export default function ResultsPage() {
       setLatex(null);
       setLatexPreview(null);
       localStorage.setItem("ats-optimized", JSON.stringify(result));
-      setNotice({ message: result.optimization.refinement_provider ? "NVIDIA optimization is ready. Review and select the changes to export." : "Local suggestions are ready. See the optimization notes for NVIDIA status.", tone: result.optimization.refinement_provider ? "success" : "info" });
+      setNotice({ message: result.optimization.refinement_provider ? `${result.optimization.changed_count ?? 0} suggested changes ready for review.` : result.optimization.ai_message || "Local suggestions are ready.", tone: result.optimization.ai_status === "fallback" ? "error" : "success" });
     } catch (exc) {
       setNotice({ message: exc instanceof Error ? exc.message : "Optimization failed.", tone: "error" });
     } finally {
@@ -185,6 +191,12 @@ export default function ResultsPage() {
         selectedBullets
       );
       setLatexPreview(result);
+      if (result.latex_source && result.source_download_url && result.source_filename) {
+        setLatex((previous) => previous ? { ...previous, latex_source: result.latex_source!,
+          filename: result.source_filename!, download_url: result.source_download_url!,
+          path: `optimized/${result.source_filename}` } : previous);
+      }
+      window.dispatchEvent(new CustomEvent(LATEX_PREVIEW_READY_EVENT, { detail: { filename: workflow.filename } }));
       setExportResult({ key: selectionKey, details: result });
       setNotice({
         message: result.fallback
@@ -233,8 +245,8 @@ export default function ResultsPage() {
 
   function selectAllChanges() {
     if (!optimized) return;
-    setSelectedSummary(Boolean(optimized.optimization.improved_summary));
-    setSelectedBulletOriginals(optimized.optimization.improved_bullets.map((item) => item.original));
+    setSelectedSummary(Boolean(optimized.optimization.improved_summary && optimized.optimization.improved_summary.trim() !== optimized.structured_resume.summary?.trim()));
+    setSelectedBulletOriginals(optimized.optimization.improved_bullets.filter((item) => item.original.trim() !== item.improved.trim()).map((item) => item.original));
     invalidateLatex();
   }
 
@@ -291,6 +303,8 @@ export default function ResultsPage() {
   );
   const selectedSummaryText = selectedSummary ? optimized?.optimization.improved_summary || null : null;
   const selectionCount = selectedBullets.length + (selectedSummaryText ? 1 : 0);
+  const availableChangeCount = (optimized?.optimization.improved_bullets || []).filter((item) => item.original.trim() !== item.improved.trim()).length
+    + Number(Boolean(optimized?.optimization.improved_summary && optimized.optimization.improved_summary.trim() !== optimized.structured_resume.summary?.trim()));
   const selectionKey = JSON.stringify([workflow?.filename, workflow?.jobDescription, confirmedSkills, selectedSummaryText, selectedBullets]);
   const currentScore = selectionScore?.key === selectionKey ? selectionScore : null;
   const currentExport = exportResult?.key === selectionKey ? exportResult.details : null;
@@ -340,7 +354,7 @@ export default function ResultsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl space-y-6 overflow-x-hidden px-4 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto w-full max-w-[1600px] space-y-6 overflow-x-hidden px-4 py-8 sm:px-6 sm:py-10">
       <section className="flex flex-col justify-between gap-5 rounded-2xl bg-zinc-950 p-6 text-white shadow-xl shadow-zinc-950/10 sm:p-8 lg:flex-row lg:items-center">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">Recruiter-grade results</p>
@@ -359,7 +373,19 @@ export default function ResultsPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-[0.85fr_1.075fr_1.075fr]">
+      {optimized?.optimization.ai_status === "fallback" ? (
+        <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-bold">NVIDIA optimization did not finish</p>
+          <p className="mt-1">{optimized.optimization.ai_message}</p>
+          <p className="mt-1">Your resume is unchanged. Local suggestions are available below; use Optimize again to retry.</p>
+        </div>
+      ) : optimized?.optimization.ai_status === "partial" ? (
+        <p role="status" className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">NVIDIA completed part of the review · {availableChangeCount} suggested changes are available. Retry optimization to review the retained content.</p>
+      ) : optimized?.optimization.ai_status === "success" ? (
+        <p role="status" className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm text-emerald-900">NVIDIA review complete · {availableChangeCount} suggested changes. Select the changes you want to export.</p>
+      ) : null}
+
+      <section className="grid gap-4 md:grid-cols-[0.85fr_1.075fr_1.075fr]">
         <Card className="reveal-card">
           <CardContent className="grid min-h-72 place-items-center">
             <p className="mb-3 text-center text-xs font-semibold text-zinc-600" aria-live="polite">{scoreTitle}</p>
@@ -367,6 +393,7 @@ export default function ResultsPage() {
             <div className="mt-5 text-center">
               <p className="text-sm font-bold text-zinc-950">{scoreLabel(ats?.score ?? 0)}</p>
               <p className="mt-1 text-xs text-zinc-500">Overall resume and role alignment</p>
+              {optimized && !selectionCount && !confirmedSkills.length ? <p className="mt-2 text-xs text-zinc-600">No edits selected. Choose changes below to calculate their effect on your score.</p> : null}
               {baseline ? (
                 <p className="mt-2 text-xs font-semibold text-emerald-700">
                   Original: {baseline.score}/100 · {currentExport?.ats ? "Exported" : "Selected"}: {currentExport?.ats || currentScore ? `${ats?.score}/100` : "calculating"}. Scores are estimates from this app, not a hiring guarantee.
@@ -474,13 +501,13 @@ export default function ResultsPage() {
             <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-600 text-white"><CheckSquare2 className="h-5 w-5" /></div>
             <div>
               <p className="text-sm font-black text-zinc-950">Review and approve changes</p>
-              <p className="mt-1 text-xs leading-5 text-zinc-600">Choose exactly what goes into LaTeX. Unselected content stays identical to the uploaded resume.</p>
+              <p className="mt-1 text-xs leading-5 text-zinc-600">Choose which edits to include in your exports. Unselected content is retained.</p>
               <p className="mt-2 text-xs font-bold text-indigo-700">{selectionCount} change{selectionCount === 1 ? "" : "s"} selected</p>
             </div>
           </div>
           <div className="flex shrink-0 gap-2">
             <Button variant="outline" className="flex-1 justify-center sm:flex-none" onClick={clearSelectedChanges} disabled={Boolean(loading) || selectionCount === 0}>Clear</Button>
-            <Button variant="secondary" className="flex-1 justify-center sm:flex-none" onClick={selectAllChanges} disabled={Boolean(loading)}>Select all</Button>
+            <Button variant="secondary" className="flex-1 justify-center sm:flex-none" onClick={selectAllChanges} disabled={Boolean(loading) || availableChangeCount === 0}>Select all</Button>
           </div>
         </section>
       ) : null}
@@ -490,16 +517,16 @@ export default function ResultsPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between gap-3">
-                <CardTitle className="flex items-center gap-2"><InsightStackIcon className="h-7 w-7" />Optimized summary</CardTitle>
+                <CardTitle className="flex items-center gap-2"><InsightStackIcon className="h-7 w-7" />Summary review</CardTitle>
                 <button
                   type="button"
                   aria-pressed={selectedSummary}
-                  disabled={Boolean(loading) || !optimized?.optimization.improved_summary}
+                  disabled={Boolean(loading) || !optimized?.optimization.improved_summary || optimized.optimization.improved_summary.trim() === optimized.structured_resume.summary?.trim()}
                   onClick={toggleSummarySelection}
                   className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition disabled:cursor-not-allowed disabled:opacity-40 ${selectedSummary ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-zinc-200 bg-white text-zinc-500 hover:border-indigo-200"}`}
                 >
                   {selectedSummary ? <CheckSquare2 className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-                  {selectedSummary ? "Selected" : "Use change"}
+                  {optimized && optimized.optimization.improved_summary.trim() === optimized.structured_resume.summary?.trim() ? "Original retained" : selectedSummary ? "Selected" : "Use change"}
                 </button>
               </div>
             </CardHeader>
@@ -572,13 +599,14 @@ export default function ResultsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Optimized experience bullets</CardTitle>
+              <CardTitle>Experience and project rewrites</CardTitle>
               <p className="mt-1 text-xs leading-5 text-zinc-500">Select only the rewrites you want included in the LaTeX resume.</p>
             </CardHeader>
             <CardContent className="space-y-4">
               {loading === "optimize" ? <><Skeleton className="h-32" /><Skeleton className="h-32" /></> : null}
               {loading !== "optimize" && (optimized?.optimization.improved_bullets || []).map((item, index) => {
                 const selected = selectedBulletOriginals.includes(item.original);
+                const unchanged = item.original.trim() === item.improved.trim();
                 return (
                 <article className={`rounded-2xl border p-4 transition ${selected ? "border-indigo-300 bg-indigo-50/40 shadow-sm" : "border-zinc-200"}`} key={`${item.original}-${index}`}>
                   <div className="flex items-start justify-between gap-3">
@@ -586,18 +614,20 @@ export default function ResultsPage() {
                     <button
                       type="button"
                       aria-pressed={selected}
-                      disabled={Boolean(loading)}
+                      disabled={Boolean(loading) || unchanged}
                       onClick={() => toggleBulletSelection(item.original)}
                       className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition ${selected ? "border-indigo-300 bg-white text-indigo-700" : "border-zinc-200 bg-white text-zinc-500 hover:border-indigo-200"}`}
                     >
                       {selected ? <CheckSquare2 className="h-4 w-4" /> : <Square className="h-4 w-4" />}
-                      {selected ? "Selected" : "Use change"}
+                      {unchanged ? "Original retained" : selected ? "Selected" : "Use change"}
                     </button>
                   </div>
                   <p className="mt-2 text-sm leading-6 text-zinc-500">{item.original}</p>
-                  <div className="my-4 h-px bg-zinc-100" />
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">Suggested</p>
-                  <p className="mt-2 text-sm font-medium leading-6 text-zinc-950">{item.improved}</p>
+                  {!unchanged ? <>
+                    <div className="my-4 h-px bg-zinc-100" />
+                    <p className="text-xs font-bold uppercase tracking-[0.14em] text-indigo-600">Suggested rewrite</p>
+                    <p className="mt-2 text-sm font-medium leading-6 text-zinc-950">{item.improved}</p>
+                  </> : null}
                   <p className="mt-3 text-xs leading-5 text-zinc-500">{item.reason}</p>
                 </article>
               );})}
@@ -610,7 +640,7 @@ export default function ResultsPage() {
           <Card className="overflow-hidden border-indigo-200">
             <div className="border-b border-indigo-100 bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-4 text-white">
               <div className="flex items-center gap-2"><Bot className="h-5 w-5" /><p className="text-sm font-black">Refine selected changes</p></div>
-              <p className="mt-1 text-xs leading-5 text-indigo-100">One compact NVIDIA Mistral request edits only the changes you approved.</p>
+              <p className="mt-1 text-xs leading-5 text-indigo-100">NVIDIA refines only the changes you approved.</p>
             </div>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between gap-3 text-xs">
@@ -727,7 +757,7 @@ export default function ResultsPage() {
                 ) : null}
               </div>
               {latexPreview ? (
-                <iframe className="h-[420px] w-full bg-zinc-100 sm:h-[62vh]" src={apiUrl(latexPreview.download_url)} title="Compiled LaTeX resume preview" />
+                <iframe className="h-[70vh] min-h-[420px] w-full bg-zinc-100" src={`${apiUrl(latexPreview.download_url)}#view=Fit&navpanes=0`} title="Compiled LaTeX resume preview" />
               ) : (
                 <div className="grid h-[420px] place-items-center p-6 text-center sm:h-[62vh]">
                   <div className="max-w-sm rounded-2xl border border-indigo-100 bg-white p-6 shadow-sm">

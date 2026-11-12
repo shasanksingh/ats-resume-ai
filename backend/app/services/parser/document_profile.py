@@ -57,6 +57,28 @@ def load_pdf_resume(path: str | Path) -> tuple[str, dict]:
             "name_font_size": max(s["size"] for s in spans) if spans else 18,
             "bold_phrases": list(dict.fromkeys(bold)),
         }
+        first_spans = [span for block in doc[0].get_text("dict")["blocks"]
+                       for line in block.get("lines", []) for span in line["spans"] if span["text"].strip()]
+        if first_spans:
+            data["document_profile"]["margins"] = {
+                "left": round(max(18, min(54, min(s["bbox"][0] for s in first_spans))), 2),
+                "right": round(max(18, min(54, doc[0].rect.width - max(s["bbox"][2] for s in first_spans))), 2),
+                "top": round(max(8, min(36, min(s["bbox"][1] for s in first_spans))), 2),
+                "bottom": 18,
+            }
+        # Recover separate role/location columns using their actual coordinates,
+        # rather than recognizing a fixed list of cities from one resume.
+        for role in data.get("experience", []):
+            title = role.get("title", "")
+            for line in lines:
+                value = " ".join("".join(s["text"] for s in line["spans"]).split())
+                if value and title.startswith(value + " "):
+                    for other in lines:
+                        location = " ".join("".join(s["text"] for s in other["spans"]).split())
+                        if (location and abs(line["bbox"][1] - other["bbox"][1]) < 2
+                                and other["bbox"][0] > line["bbox"][2] + 12
+                                and title == value + " " + location):
+                            role["title"], role["location"] = value, location
         texts = [data.get("summary", "")]
         texts.extend(bullet for entry in [*data.get("experience", []), *data.get("projects", [])] for bullet in entry.get("bullets", []))
         styles = {}
@@ -76,6 +98,10 @@ def load_pdf_resume(path: str | Path) -> tuple[str, dict]:
         in_skills = False
         group = None
         aliases = {alias: section for section, values in SECTION_ALIASES.items() for alias in values}
+        heading_sizes = [s["size"] for line in lines
+                         if " ".join("".join(s["text"] for s in line["spans"]).split()).lower().rstrip(":") in aliases
+                         for s in line["spans"]]
+        data["document_profile"]["heading_font_size"] = round(max(heading_sizes), 2) if heading_sizes else round(body_size * 1.15, 2)
         for line in sorted(lines, key=lambda item: (item["bbox"][1], item["bbox"][0])) if len(doc) == 1 else lines:
             parts = line["spans"]
             value = " ".join("".join(s["text"] for s in parts).split())

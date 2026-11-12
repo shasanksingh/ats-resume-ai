@@ -5,11 +5,44 @@ from unittest.mock import patch
 import fitz
 
 from app.services.ats.ats_score import calculate_ats_score
-from app.services.llm.resume_optimizer import project_selected_text, rewrite_bullet
+from app.services.llm.resume_optimizer import project_selected_text, rewrite_bullet, add_keywords_to_existing_groups
 from app.services.parser.resume_parser import extract_resume_data
+from app.services.parser.document_profile import load_pdf_resume
 from app.services.rebuilder.latex_compiler import LatexCompilationError, compile_latex_source
 from app.services.rebuilder.latex_resume import build_jakes_resume, styled_latex
 from app.services.rebuilder.preserved_pdf import preserve_pdf
+
+
+def test_layout_profile_uses_each_candidates_geometry_and_fonts(tmp_path):
+    for name, font, width, height, size in (("Morgan Bell", "helv", 595, 842, 11), ("Alex Rivera", "tiro", 612, 792, 9)):
+        path = tmp_path / f"{name}.pdf"
+        with fitz.open() as doc:
+            page = doc.new_page(width=width, height=height)
+            page.insert_text((42, 40), name, fontname=font, fontsize=18)
+            page.insert_text((42, 65), "Summary\nEngineer building reliable Python services.\nSkills\nPython, SQL", fontname=font, fontsize=size)
+            doc.save(path)
+        _, data = load_pdf_resume(path)
+        source = build_jakes_resume(data, {})
+        assert name in source
+        assert f"paperwidth={float(width)}bp,paperheight={float(height)}bp" in source
+        assert data["document_profile"]["body_font_size"] == size
+        assert data["document_profile"]["margins"]["left"] == 42
+        assert (r"\usepackage{helvet}" in source) == (font == "helv")
+        assert (r"\usepackage{newtxtext}" in source) == (font == "tiro")
+
+
+def test_role_location_columns_are_not_specific_to_known_cities(tmp_path):
+    path = tmp_path / "resume.pdf"
+    with fitz.open() as doc:
+        page = doc.new_page()
+        page.insert_text((40, 40), "Morgan Bell\nExperience\nExample Labs | Jan 2022 - Present", fontsize=10)
+        page.insert_text((40, 90), "Software Engineer", fontsize=10)
+        page.insert_text((400, 90), "Reykjavik, Iceland", fontsize=10)
+        page.insert_text((40, 110), "- Built Python services used by 20 teams.", fontsize=10)
+        doc.save(path)
+    _, data = load_pdf_resume(path)
+    assert data["experience"][0]["title"] == "Software Engineer"
+    assert data["experience"][0]["location"] == "Reykjavik, Iceland"
 
 
 def test_pipe_project_titles_and_uppercase_bullet_continuations():
@@ -41,6 +74,13 @@ def test_unselected_score_preserves_source_and_does_not_add_sections():
     score = calculate_ats_score(text, "Java and Python")
     assert "java" not in score["matched_keywords"]
     assert score == calculate_ats_score(project_selected_text(text, data, {}), "Java and Python")
+
+
+def test_evidence_backed_api_skill_is_not_added_as_a_programming_language():
+    groups = {"Languages": ["Python"], "Backend / Data": ["FastAPI"]}
+    result = add_keywords_to_existing_groups(groups, ["api integration"])
+    assert result["Languages"] == ["Python"]
+    assert result["Backend / Data"] == ["FastAPI", "API Integration"]
 
 
 def test_keyword_matching_does_not_award_substring_matches():

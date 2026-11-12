@@ -29,8 +29,9 @@ NVIDIA_API_URL = os.getenv(
     "https://integrate.api.nvidia.com/v1/chat/completions",
 ).strip()
 NVIDIA_MODEL = os.getenv("NVIDIA_MODEL", "mistralai/mistral-large-4-1t-a52b").strip()
+NVIDIA_FALLBACK_MODEL = os.getenv("NVIDIA_FALLBACK_MODEL", "nvidia/nemotron-3.5-super-vl-120b-a12b").strip()
 NVIDIA_TIMEOUT_SECONDS = max(5, min(120, int(os.getenv("NVIDIA_TIMEOUT_SECONDS", "120"))))
-NVIDIA_MAX_TOKENS = max(256, min(2048, int(os.getenv("NVIDIA_MAX_TOKENS", "1200"))))
+NVIDIA_MAX_TOKENS = max(512, min(8192, int(os.getenv("NVIDIA_MAX_TOKENS", "4096"))))
 
 
 def parse_cors_origins() -> list[str]:

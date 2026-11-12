@@ -39,7 +39,7 @@ GROUP_RULES = [
             "api testing", "rest api", "postman", "api validation", "swagger",
             "api integration", "graphql",
         },
-        ["API Testing", "Automation Testing", "Tools", "Skills"],
+        ["API Testing", "Backend", "APIs", "Automation Testing", "Tools", "Skills"],
     ),
     (
         {
@@ -213,11 +213,15 @@ def choose_group_for_keyword(keyword: str, groups: Dict[str, List[str]]) -> str:
             exact = group_lookup.get(preferred.casefold())
             if exact:
                 return exact
+        for preferred in preferred_groups:
+            for existing in groups:
+                if preferred.casefold() in existing.casefold():
+                    return existing
         for existing in groups:
             existing_normalized = existing.casefold()
-            if any(part in existing_normalized for part in ("skill", "tool", "testing", "concept", "language")):
+            if any(part in existing_normalized for part in ("skill", "tool", "testing", "concept")):
                 return existing
-    return next(iter(groups))
+    return "Additional Skills"
 
 
 def merge_skills(current: List[str], additions: List[str]) -> List[str]:
@@ -325,7 +329,9 @@ def find_weak_bullets(structured: Dict) -> List[str]:
         has_metric = bool(re.search(r"\d+|%|\$|x\b", bullet, re.I))
         if not starts_with_action or not has_metric:
             weak.append(bullet)
-    return weak or bullets[:5]
+    # Include long, already-action-led bullets as candidates too. Previously a
+    # few weak entries prevented all other projects from reaching the editor.
+    return sorted(dict.fromkeys(bullets), key=lambda bullet: (bullet not in weak, -len(bullet.split())))
 
 
 def rewrite_bullet(bullet: str, missing_keywords: List[str]) -> Dict:
@@ -339,7 +345,7 @@ def rewrite_bullet(bullet: str, missing_keywords: List[str]) -> Dict:
         improved = re.sub(r"\b" + phrase + r"\b", replacement, improved, flags=re.I)
     improved += "." if bullet.endswith(".") else ""
     reason = ("Removes wordiness while retaining the original facts, tools, and metrics."
-              if improved != bullet else "Already uses clear language; select for targeted AI refinement if needed.")
+              if improved != bullet else "Original retained; no supported local wording improvement was found.")
     if not re.search(r"\d+|%|\$|x\b", improved, re.I):
         reason += " Add a metric only when a truthful result is available."
 
@@ -361,6 +367,7 @@ def display_skill(skill: str) -> str:
     acronyms = {
         "api": "API",
         "api testing": "API Testing",
+        "api integration": "API Integration",
         "aws": "AWS",
         "ci/cd": "CI/CD",
         "css": "CSS",

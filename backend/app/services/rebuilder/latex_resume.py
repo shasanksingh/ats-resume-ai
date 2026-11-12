@@ -110,17 +110,20 @@ def build_jakes_resume(structured: Dict, optimized: Dict) -> str:
     size = profile.get("body_font_size", 9)
     leading = round(size * 1.08, 2)
     name_size = profile.get("name_font_size", 18.8)
+    heading_size = profile.get("heading_font_size", round(size * 1.15, 2))
+    margins = {"left": 36, "right": 36, "top": 18, "bottom": 18, **profile.get("margins", {})}
     font = profile.get("font_name", "").lower()
     font_setup = r"\usepackage{lmodern}"
     if "times" in font:
         font_setup = r"\usepackage{newtxtext}"
     elif profile.get("font_family") == "sans":
         font_setup = r"\usepackage{helvet}\renewcommand{\familydefault}{\sfdefault}"
-    return rf"""\documentclass[letterpaper]{{article}}
+    return rf"""% ATS_ADAPTIVE_LAYOUT
+\documentclass[letterpaper]{{article}}
 
 \usepackage[T1]{{fontenc}}
 {font_setup}
-\usepackage[paperwidth={profile.get('width', 612)}bp,paperheight={profile.get('height', 792)}bp,left=0.43in,right=0.43in,top=0.15in,bottom=0.12in]{{geometry}}
+\usepackage[paperwidth={profile.get('width', 612)}bp,paperheight={profile.get('height', 792)}bp,left={margins['left']}bp,right={margins['right']}bp,top={margins['top']}bp,bottom={margins['bottom']}bp]{{geometry}}
 \usepackage{{titlesec}}
 \usepackage{{enumitem}}
 \usepackage[hidelinks]{{hyperref}}
@@ -147,7 +150,7 @@ def build_jakes_resume(structured: Dict, optimized: Dict) -> str:
 \raggedbottom
 \raggedright
 
-\titleformat{{\section}}{{\fontsize{{9.4}}{{10}}\selectfont\bfseries}}{{}}{{0em}}{{}}[\titlerule]
+\titleformat{{\section}}{{\fontsize{{{heading_size}}}{{{round(heading_size * 1.08, 2)}}}\selectfont\bfseries}}{{}}{{0em}}{{}}[\titlerule]
 \titlespacing*{{\section}}{{0pt}}{{4pt}}{{2pt}}
 
 \newcommand{{\resumeItem}}[1]{{\item #1}}
